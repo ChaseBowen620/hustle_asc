@@ -132,6 +132,12 @@ function PositionsPage() {
 
     console.log('Filtered semester classes:', semesterClasses)
 
+    const classTAs = tas.filter(ta => 
+      semesterClasses.some(class_ => class_.id === ta.class_assigned.id)
+    ).sort((a, b) => 
+      a.student.first_name.localeCompare(b.student.first_name)
+    );
+
     return (
       <>
         <div className="flex justify-between items-center">
@@ -164,47 +170,37 @@ function PositionsPage() {
             <div>No semesters available</div>
           )}
 
-          <Card>
-            <CardContent className="p-0">
-              <Accordion type="single" collapsible className="w-full">
-                {semesterClasses.map((class_) => {
-                  const classTAs = tas.filter(ta => 
-                    ta.class_assigned.id === class_.id
-                  ).sort((a, b) => 
-                    a.student.first_name.localeCompare(b.student.first_name)
-                  );
-
-                  return (
-                    <AccordionItem key={class_.id} value={class_.id.toString()}>
-                      <AccordionTrigger className="px-6 hover:no-underline">
-                        <div className="flex flex-col items-start">
-                          <div className="font-medium">{class_.course_code}</div>
-                          <div className="text-sm text-muted-foreground">
-                            Prof. {class_.professor.first_name} {class_.professor.last_name}
+          <div className="bg-card rounded-lg border">
+            <Accordion type="single" collapsible className="w-full">
+              {semesterClasses.map((class_) => (
+                <AccordionItem key={class_.id} value={class_.id.toString()}>
+                  <AccordionTrigger className="px-6 hover:no-underline">
+                    <div className="flex flex-col items-start">
+                      <div className="font-medium">{class_.course_code}</div>
+                      <div className="text-sm text-muted-foreground">
+                        Prof. {class_.professor.first_name} {class_.professor.last_name}
+                      </div>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="px-6">
+                    <div className="space-y-2">
+                      {classTAs.length > 0 ? (
+                        classTAs.map(ta => (
+                          <div key={ta.id} className="py-2">
+                            {ta.student.first_name} {ta.student.last_name}
                           </div>
+                        ))
+                      ) : (
+                        <div className="py-2 text-muted-foreground">
+                          No TAs assigned
                         </div>
-                      </AccordionTrigger>
-                      <AccordionContent className="px-6">
-                        <div className="space-y-2">
-                          {classTAs.length > 0 ? (
-                            classTAs.map(ta => (
-                              <div key={ta.id} className="py-2">
-                                {ta.student.first_name} {ta.student.last_name}
-                              </div>
-                            ))
-                          ) : (
-                            <div className="py-2 text-muted-foreground">
-                              No TAs assigned
-                            </div>
-                          )}
-                        </div>
-                      </AccordionContent>
-                    </AccordionItem>
-                  );
-                })}
-              </Accordion>
-            </CardContent>
-          </Card>
+                      )}
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          </div>
         </div>
       </>
     );
@@ -305,8 +301,8 @@ function PositionsPage() {
   )
 
   return (
-    <div className="min-h-screen bg-background p-8">
-      <div className="max-w-6xl mx-auto space-y-8">
+    <div className="min-h-screen bg-background px-4 sm:px-8 py-6 sm:py-8">
+      <div className="max-w-6xl mx-auto space-y-6">
         {view === 'main' ? <MainView /> : <EditView />}
       </div>
     </div>

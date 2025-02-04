@@ -58,37 +58,34 @@ function EventsPage() {
 
   const handleCheckIn = async (eventId, studentId) => {
     try {
-      await axios.post('http://localhost:8000/api/attendance/', {
+      const response = await axios.post('http://localhost:8000/api/attendance/', {
         student: studentId,
         event: eventId
       })
-      console.log(`Checked in student ${studentId} for event ${eventId}`)
+      return response.data  // Return the response data for success case
     } catch (error) {
-      console.error('Error checking in student:', error)
+      // Throw the error to be handled by CheckInStudents component
+      throw error
     }
   }
 
-  if (loading) {
-    return <div className="min-h-screen bg-background p-8">
-      <div className="max-w-6xl mx-auto">
-        <div className="text-center">Loading students...</div>
-      </div>
-    </div>
-  }
-
   return (
-    <div className="min-h-screen bg-background p-8">
-      <div className="max-w-6xl mx-auto space-y-8">
-        <h1 className="text-3xl font-bold text-left">Events</h1>
+    <div className="min-h-screen bg-background px-4 sm:px-8 py-6 sm:py-8">
+      <div className="max-w-6xl mx-auto space-y-6">
+        <h1 className="text-3xl font-bold">Events</h1>
         
-        <Tabs defaultValue="calendar" className="space-y-6">
+        <Tabs defaultValue="calendar" className="space-y-4">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="calendar">Calendar</TabsTrigger>
             <TabsTrigger value="checkin">Check In</TabsTrigger>
           </TabsList>
 
           <TabsContent value="calendar" className="space-y-6">
-            <Calendar events={events} onCreateEvent={handleCreateEvent} />
+            <div className="overflow-x-auto">
+              <div className="min-w-[320px]">
+                <Calendar events={events} onCreateEvent={handleCreateEvent} />
+              </div>
+            </div>
           </TabsContent>
 
           <TabsContent value="checkin">

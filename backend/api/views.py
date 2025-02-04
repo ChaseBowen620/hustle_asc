@@ -49,17 +49,65 @@ class AttendanceViewSet(viewsets.ModelViewSet):
     serializer_class = AttendanceSerializer
 
     def create(self, request, *args, **kwargs):
-        # Check if student is already checked in
-        student_id = request.data.get('student')
-        event_id = request.data.get('event')
-        
-        if Attendance.objects.filter(student_id=student_id, event_id=event_id).exists():
-            return Response({'error': 'Student already checked in'}, status=400)
+        try:
+            # Debug logging
+            print("Attendance creation request data:", request.data)
             
-        attendance = super().create(request, *args, **kwargs)
-        # Fetch the complete attendance record with related student data
-        complete_attendance = Attendance.objects.select_related('student').get(id=attendance.data['id'])
-        return Response(AttendanceSerializer(complete_attendance).data)
+            student_id = request.data.get('student')
+            event_id = request.data.get('event')
+            
+            print(f"Attempting to create attendance for student {student_id} at event {event_id}")
+            
+            # Validate input data
+            if not student_id or not event_id:
+                return Response(
+                    {'error': 'Both student and event are required'}, 
+                    status=400
+                )
+            
+            # Check if student exists
+            try:
+                student = Student.objects.get(id=student_id)
+            except Student.DoesNotExist:
+                return Response(
+                    {'error': f'Student with id {student_id} does not exist'}, 
+                    status=404
+                )
+            
+            # Check if event exists
+            try:
+                event = Event.objects.get(id=event_id)
+            except Event.DoesNotExist:
+                return Response(
+                    {'error': f'Event with id {event_id} does not exist'}, 
+                    status=404
+                )
+            
+            # Check for existing attendance
+            if Attendance.objects.filter(student_id=student_id, event_id=event_id).exists():
+                return Response(
+                    {'error': 'Student already checked in'}, 
+                    status=400
+                )
+                
+            # Create the attendance record
+            attendance = Attendance.objects.create(
+                student_id=student_id,
+                event_id=event_id
+            )
+            
+            # Return the serialized data
+            return Response(
+                AttendanceSerializer(attendance).data,
+                status=201
+            )
+            
+        except Exception as e:
+            print(f"Error creating attendance: {str(e)}")
+            return Response(
+                {'error': f'Server error: {str(e)}'}, 
+                status=500
+            )
 
 class SemesterViewSet(viewsets.ModelViewSet):
     queryset = Semester.objects.all().order_by('-year', 'season')

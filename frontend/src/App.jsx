@@ -8,6 +8,7 @@ import PositionsPage from "./pages/PositionsPage"
 import LoginPage from "./pages/LoginPage"
 import LandingPage from "./pages/LandingPage"
 import AboutPage from "./pages/AboutPage"
+import { Toaster } from "./components/ui/toaster"
 
 function PrivateRoute({ children }) {
   const user = JSON.parse(localStorage.getItem('user') || 'null')
@@ -64,6 +65,7 @@ function App() {
             }
           />
         </Routes>
+        <Toaster />
       </div>
     </Router>
   )

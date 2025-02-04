@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import {
   Select,
@@ -7,15 +7,72 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import axios from "axios"
+import { useToast } from "../hooks/use-toast"
 
 function CheckInStudents({ events, students, onCheckIn }) {
   const [selectedEvent, setSelectedEvent] = useState("")
   const [selectedStudent, setSelectedStudent] = useState("")
+  const [attendance, setAttendance] = useState([])
+  const [loading, setLoading] = useState(false)
+  const { toast } = useToast()
 
-  const handleCheckIn = () => {
+  useEffect(() => {
+    const fetchAttendance = async () => {
+      if (selectedEvent) {
+        try {
+          setLoading(true)
+          const response = await axios.get(`http://localhost:8000/api/attendance/?event=${selectedEvent}`)
+          setAttendance(response.data)
+        } catch (error) {
+          console.error('Error fetching attendance:', error)
+        } finally {
+          setLoading(false)
+        }
+      }
+    }
+    fetchAttendance()
+  }, [selectedEvent])
+
+  const availableStudents = students.filter(student => {
+    const isCheckedIn = attendance.some(record => 
+      parseInt(record.student) === parseInt(student.id)
+    )
+    return !isCheckedIn
+  })
+
+  const handleCheckIn = async () => {
     if (selectedEvent && selectedStudent) {
-      onCheckIn(selectedEvent, selectedStudent)
-      setSelectedStudent("")
+      try {
+        await onCheckIn(selectedEvent, selectedStudent)
+        const student = students.find(s => s.id.toString() === selectedStudent)
+        toast({
+          title: "Check-in Successful",
+          description: `${student.first_name} ${student.last_name} has been checked in.`,
+          variant: "success",
+          className: "bg-green-50 border-green-200 text-green-800",
+        })
+        setSelectedStudent("")
+        // Refresh attendance data
+        const response = await axios.get(`http://localhost:8000/api/attendance/?event=${selectedEvent}`)
+        setAttendance(response.data)
+      } catch (error) {
+        if (error.response?.data?.error === 'Student already checked in') {
+          toast({
+            title: "Already Checked In",
+            description: "This student has already been checked in for this event.",
+            variant: "destructive",
+            className: "bg-red-50 border-red-200 text-red-800",
+          })
+        } else {
+          toast({
+            title: "Unknown Error",
+            description: "An error occurred while checking in. Please try again.",
+            variant: "destructive",
+            className: "bg-red-50 border-red-200 text-red-800",
+          })
+        }
+      }
     }
   }
 
@@ -25,7 +82,10 @@ function CheckInStudents({ events, students, onCheckIn }) {
         <label className="text-sm font-medium">Select Event</label>
         <Select
           value={selectedEvent}
-          onValueChange={setSelectedEvent}
+          onValueChange={(value) => {
+            setSelectedEvent(value)
+            setSelectedStudent("")
+          }}
         >
           <SelectTrigger>
             <SelectValue placeholder="Select an event" />
@@ -45,26 +105,33 @@ function CheckInStudents({ events, students, onCheckIn }) {
         <Select
           value={selectedStudent}
           onValueChange={setSelectedStudent}
+          disabled={!selectedEvent || loading}
         >
           <SelectTrigger>
-            <SelectValue placeholder="Select a student" />
+            <SelectValue placeholder={selectedEvent ? "Select a student" : "Select an event first"} />
           </SelectTrigger>
           <SelectContent>
-            {students.map((student) => (
-              <SelectItem key={student.id} value={student.id.toString()}>
-                {student.first_name} {student.last_name}
+            {availableStudents.length > 0 ? (
+              availableStudents.map((student) => (
+                <SelectItem key={student.id} value={student.id.toString()}>
+                  {student.first_name} {student.last_name}
+                </SelectItem>
+              ))
+            ) : (
+              <SelectItem value="no-students" disabled>
+                {selectedEvent ? "All students checked in" : "Select an event first"}
               </SelectItem>
-            ))}
+            )}
           </SelectContent>
         </Select>
       </div>
 
       <Button 
         onClick={handleCheckIn}
-        disabled={!selectedEvent || !selectedStudent}
+        disabled={!selectedEvent || !selectedStudent || loading}
         className="w-full"
       >
-        Check In Student
+        Check In
       </Button>
     </div>
   )

@@ -106,17 +106,17 @@ function AttendancePage() {
   }
 
   return (
-    <div className="min-h-screen bg-background p-8">
-      <div className="max-w-6xl mx-auto space-y-8">
-        <h1 className="text-3xl font-bold text-left">Attendance</h1>
+    <div className="min-h-screen bg-background px-4 sm:px-8 py-6 sm:py-8">
+      <div className="max-w-6xl mx-auto space-y-6">
+        <h1 className="text-3xl font-bold">Attendance</h1>
         
         <Card>
-          <CardContent>
-            <div className="divide-y mt-2">
+          <CardContent className="p-4 sm:p-6">
+            <div className="divide-y">
               {events.map((event) => (
                 <div 
                   key={event.id}
-                  className="py-4 first:pt-2 last:pb-0"
+                  className="py-4 first:pt-0 last:pb-0"
                 >
                   <div className="flex justify-between items-start">
                     <div>
