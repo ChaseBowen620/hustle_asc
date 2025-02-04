@@ -9,6 +9,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "./ui/sheet"
+import { cn } from "../lib/utils"
 
 function Navbar({ updateUser }) {
   const location = useLocation()
@@ -35,7 +36,7 @@ function Navbar({ updateUser }) {
   const navLinks = [
     { path: "/events", label: "Events" },
     { path: "/attendance", label: "Attendance" },
-    { path: "/positions", label: "Positions" },
+    { path: "/positions", label: "Admin" },
   ]
 
   return (
@@ -86,11 +87,12 @@ function Navbar({ updateUser }) {
               <Link
                 key={link.path}
                 to={link.path}
-                className={`inline-flex items-center px-1 pt-1 text-sm font-medium ${
-                  location.pathname === link.path 
-                    ? "border-b-2 border-blue-500 text-white"
-                    : "text-slate-300 hover:text-white"
-                }`}
+                className={cn(
+                  "text-sm font-medium transition-colors hover:text-white",
+                  location.pathname === link.path
+                    ? "text-white"
+                    : "text-neutral-400"
+                )}
               >
                 {link.label}
               </Link>
