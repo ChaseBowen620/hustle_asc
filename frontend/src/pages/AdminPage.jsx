@@ -6,7 +6,7 @@ import AdminDialogs from "../components/admin/AdminDialogs"
 import MainView from "../components/admin/MainView"
 import { API_URL } from '../config/api'
 
-function PositionsPage() {
+function AdminPage() {
   const [activeDialog, setActiveDialog] = useState(null)
   const [tas, setTAs] = useState([])
   const [classes, setClasses] = useState([])
@@ -91,45 +91,41 @@ function PositionsPage() {
   }
 
   if (loading) {
-    return <div className="min-h-screen bg-background p-8">
-      <div className="max-w-6xl mx-auto">
-        <div className="text-center">Loading positions...</div>
-      </div>
-    </div>
+    return (
+      <div className="text-center">Loading positions...</div>
+    )
   }
 
   return (
-    <div className="min-h-screen bg-background px-4 sm:px-8 py-6 sm:py-8">
-      <div className="max-w-6xl mx-auto space-y-8">
-        <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-        
-        <QuickActions onActionClick={setActiveDialog} />
-        
-        <OverviewCards 
-          stats={{
-            classes: classes,
-            tas: tas,
-            professors: professors
-          }} 
-        />
+    <div className="space-y-8">
+      <h1 className="text-3xl font-bold">Admin Dashboard</h1>
+      
+      <QuickActions onActionClick={setActiveDialog} />
+      
+      <OverviewCards 
+        stats={{
+          classes: classes,
+          tas: tas,
+          professors: professors
+        }} 
+      />
 
-        <MainView 
-          semesters={semesters}
-          selectedSemester={selectedSemester}
-          setSelectedSemester={setSelectedSemester}
-          classes={classes}
-          tas={tas}
-          loading={loading}
-        />
+      <MainView 
+        semesters={semesters}
+        selectedSemester={selectedSemester}
+        setSelectedSemester={setSelectedSemester}
+        classes={classes}
+        tas={tas}
+        loading={loading}
+      />
 
-        <AdminDialogs 
-          activeDialog={activeDialog}
-          onClose={() => setActiveDialog(null)}
-          onSuccess={handleCreateSuccess}
-        />
-      </div>
+      <AdminDialogs 
+        activeDialog={activeDialog}
+        onClose={() => setActiveDialog(null)}
+        onSuccess={handleCreateSuccess}
+      />
     </div>
   )
 }
 
-export default PositionsPage 
+export default AdminPage 

@@ -150,149 +150,154 @@ function EventsListPage() {
     .sort((a, b) => new Date(b.date) - new Date(a.date))
 
   return (
-    <div className="min-h-screen bg-background px-4 sm:px-8 py-6 sm:py-8">
-      <div className="max-w-6xl mx-auto space-y-6">
-        <div className="flex justify-between items-center">
-          <h1 className="text-3xl font-bold">Events</h1>
-          <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-            <DialogTrigger asChild>
-              <Button>Create Event</Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Create New Event</DialogTitle>
-              </DialogHeader>
-              <CreateEvent onCreateEvent={handleCreateEvent} />
-            </DialogContent>
-          </Dialog>
-        </div>
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold">Events</h1>
+        <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+          <DialogTrigger asChild>
+            <Button>Create Event</Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Create New Event</DialogTitle>
+            </DialogHeader>
+            <CreateEvent onCreateEvent={handleCreateEvent} />
+          </DialogContent>
+        </Dialog>
+      </div>
 
-        <div className="flex items-center space-x-2">
-          <Search className="w-5 h-5 text-gray-500" />
-          <Input
-            placeholder="Search events..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="max-w-sm"
+      <div className="flex items-center space-x-2">
+        <Search className="w-5 h-5 text-gray-500" />
+        <Input
+          placeholder="Search events..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="max-w-sm"
+        />
+      </div>
+
+      <div className="border rounded-lg">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Date</TableHead>
+              <TableHead className="hidden sm:table-cell">Location</TableHead>
+              <TableHead className="hidden sm:table-cell">Points</TableHead>
+              <TableHead>Attendance</TableHead>
+              <TableHead className="w-[70px]"></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filteredEvents.map((event) => (
+              <TableRow key={event.id}>
+                <TableCell className="font-medium">{event.name}</TableCell>
+                <TableCell>
+                  <span className="sm:hidden">
+                    {format(new Date(event.date), 'MMM d, yyyy')}
+                  </span>
+                  <span className="hidden sm:inline">
+                    {format(new Date(event.date), 'MMM d, yyyy h:mm a')}
+                  </span>
+                </TableCell>
+                <TableCell className="hidden sm:table-cell">{event.location}</TableCell>
+                <TableCell className="hidden sm:table-cell">{event.points}</TableCell>
+                <TableCell>
+                  <Button 
+                    variant="outline"
+                    size="sm"
+                    className="bg-slate-50 hover:bg-slate-300 transition-colors"
+                    onClick={() => {
+                      setSelectedEvent(event)
+                      setShowAttendees(true)
+                    }}
+                  >
+                    {event.attendees?.length || 0} <ClipboardList className="h-4 w-4 inline ml-1" />
+                  </Button>
+                </TableCell>
+                <TableCell>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" className="h-8 w-8 p-0">
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => setEditingEvent(event)}>
+                        Edit
+                      </DropdownMenuItem>
+                      <DropdownMenuItem 
+                        onClick={() => handleDeleteEvent(event.id)}
+                        className="text-red-600"
+                      >
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+
+      {/* Edit Event Dialog */}
+      <Dialog open={!!editingEvent} onOpenChange={() => setEditingEvent(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Event</DialogTitle>
+          </DialogHeader>
+          <CreateEvent 
+            onCreateEvent={handleEditEvent}
+            initialData={editingEvent}
           />
-        </div>
+        </DialogContent>
+      </Dialog>
 
-        <div className="border rounded-lg">
+      {/* Attendance Dialog */}
+      <Dialog open={showAttendees} onOpenChange={setShowAttendees}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              {selectedEvent?.name} - Attendance Details
+            </DialogTitle>
+          </DialogHeader>
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Location</TableHead>
-                <TableHead>Points</TableHead>
-                <TableHead>Attendance</TableHead>
-                <TableHead className="w-[70px]"></TableHead>
+                <TableHead>Check-in Time</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredEvents.map((event) => (
-                <TableRow key={event.id}>
-                  <TableCell className="font-medium">{event.name}</TableCell>
-                  <TableCell>{format(new Date(event.date), 'MMM d, yyyy h:mm a')}</TableCell>
-                  <TableCell>{event.location}</TableCell>
-                  <TableCell>{event.points}</TableCell>
-                  <TableCell>
-                    <Button 
-                      variant="outline"
-                      size="sm"
-                      className="bg-slate-50 hover:bg-slate-300 transition-colors"
-                      onClick={() => {
-                        setSelectedEvent(event)
-                        setShowAttendees(true)
-                      }}
-                    >
-                      {event.attendees?.length || 0} <ClipboardList className="h-4 w-4 inline ml-1" />
-                    </Button>
-                  </TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" className="h-8 w-8 p-0">
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => setEditingEvent(event)}>
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem 
-                          onClick={() => handleDeleteEvent(event.id)}
-                          className="text-red-600"
-                        >
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {selectedEvent?.attendees
+                .sort((a, b) => 
+                  `${a.student.last_name} ${a.student.first_name}`
+                    .localeCompare(`${b.student.last_name} ${b.student.first_name}`)
+                )
+                .map((record) => (
+                  <TableRow key={record.id}>
+                    <TableCell>
+                      {record.student.first_name} {record.student.last_name}
+                    </TableCell>
+                    <TableCell>
+                      {format(record.checked_in_at, 'h:mm a')}
+                    </TableCell>
+                  </TableRow>
+                ))}
             </TableBody>
           </Table>
-        </div>
-
-        {/* Edit Event Dialog */}
-        <Dialog open={!!editingEvent} onOpenChange={() => setEditingEvent(null)}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Edit Event</DialogTitle>
-            </DialogHeader>
-            <CreateEvent 
-              onCreateEvent={handleEditEvent}
-              initialData={editingEvent}
-            />
-          </DialogContent>
-        </Dialog>
-
-        {/* Attendance Dialog */}
-        <Dialog open={showAttendees} onOpenChange={setShowAttendees}>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>
-                {selectedEvent?.name} - Attendance Details
-              </DialogTitle>
-            </DialogHeader>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Check-in Time</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {selectedEvent?.attendees
-                  .sort((a, b) => 
-                    `${a.student.last_name} ${a.student.first_name}`
-                      .localeCompare(`${b.student.last_name} ${b.student.first_name}`)
-                  )
-                  .map((record) => (
-                    <TableRow key={record.id}>
-                      <TableCell>
-                        {record.student.first_name} {record.student.last_name}
-                      </TableCell>
-                      <TableCell>
-                        {format(record.checked_in_at, 'h:mm a')}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-              </TableBody>
-            </Table>
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => handleDownloadCSV(selectedEvent)}
-                className="bg-slate-50 hover:bg-slate-300"
-              >
-                Download
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => handleDownloadCSV(selectedEvent)}
+              className="bg-slate-50 hover:bg-slate-300"
+            >
+              Download
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

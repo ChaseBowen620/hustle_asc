@@ -41,8 +41,8 @@ function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center">
-      <Card className="w-[400px]">
+    <div className="bg-background p-4 pt-16 sm:pt-24">
+      <Card className="w-full max-w-md mx-auto">
         <CardHeader>
           <CardTitle className="text-2xl text-center">Sign In</CardTitle>
         </CardHeader>

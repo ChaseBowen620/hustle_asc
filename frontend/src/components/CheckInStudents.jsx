@@ -1,141 +1,122 @@
-import { useState, useEffect } from "react"
-import { Button } from "@/components/ui/button"
+import { useState } from "react"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import axios from "axios"
-import { useToast } from "../hooks/use-toast"
-import { API_URL } from '../config/api'
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Search } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog"
 
-function CheckInStudents({ events, students, onCheckIn }) {
-  const [selectedEvent, setSelectedEvent] = useState("")
-  const [selectedStudent, setSelectedStudent] = useState("")
-  const [attendance, setAttendance] = useState([])
-  const [loading, setLoading] = useState(false)
-  const { toast } = useToast()
+function CheckInStudents({ students, onCheckIn, attendances, selectedEvent }) {
+  const [searchTerm, setSearchTerm] = useState("")
+  const [selectedStudent, setSelectedStudent] = useState(null)
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false)
 
-  useEffect(() => {
-    const fetchAttendance = async () => {
-      if (selectedEvent) {
-        try {
-          setLoading(true)
-          const response = await axios.get(`${ API_URL }/api/attendance/?event=${selectedEvent}`)
-          setAttendance(response.data)
-        } catch (error) {
-          console.error('Error fetching attendance:', error)
-        } finally {
-          setLoading(false)
-        }
-      }
-    }
-    fetchAttendance()
-  }, [selectedEvent])
-
+  // Filter out students who have already checked in to this event
   const availableStudents = students.filter(student => {
-    const isCheckedIn = attendance.some(record => 
-      parseInt(record.student) === parseInt(student.id)
+    return !attendances.some(
+      attendance => 
+        attendance.student.id === student.id && 
+        attendance.event === selectedEvent.id
     )
-    return !isCheckedIn
   })
 
-  const handleCheckIn = async () => {
-    if (selectedEvent && selectedStudent) {
-      try {
-        await onCheckIn(selectedEvent, selectedStudent)
-        const student = students.find(s => s.id.toString() === selectedStudent)
-        toast({
-          title: "Check-in Successful",
-          description: `${student.first_name} ${student.last_name} has been checked in.`,
-          variant: "success",
-          className: "bg-green-50 border-green-200 text-green-800",
-        })
-        setSelectedStudent("")
-        // Refresh attendance data
-        const response = await axios.get(`${API_URL}/api/attendance/?event=${selectedEvent}`)
-        setAttendance(response.data)
-      } catch (error) {
-        if (error.response?.data?.error === 'Student already checked in') {
-          toast({
-            title: "Already Checked In",
-            description: "This student has already been checked in for this event.",
-            variant: "destructive",
-            className: "bg-red-50 border-red-200 text-red-800",
-          })
-        } else {
-          toast({
-            title: "Unknown Error",
-            description: "An error occurred while checking in. Please try again.",
-            variant: "destructive",
-            className: "bg-red-50 border-red-200 text-red-800",
-          })
-        }
-      }
-    }
+  const filteredStudents = availableStudents.filter(student =>
+    `${student.first_name} ${student.last_name} ${student.email}`.toLowerCase().includes(searchTerm.toLowerCase())
+  )
+
+  const handleConfirmCheckIn = () => {
+    onCheckIn(selectedStudent)
+    setShowConfirmDialog(false)
+    setSelectedStudent(null)
+  }
+
+  // Extract A-Number from email (assumes format: a12345678@usu.edu)
+  const getANumber = (email) => {
+    return email.split('@')[0].toUpperCase()
   }
 
   return (
     <div className="space-y-4">
-      <div className="space-y-2">
-        <label className="text-sm font-medium">Select Event</label>
-        <Select
-          value={selectedEvent}
-          onValueChange={(value) => {
-            setSelectedEvent(value)
-            setSelectedStudent("")
-          }}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Select an event" />
-          </SelectTrigger>
-          <SelectContent>
-            {events.map((event) => (
-              <SelectItem key={event.id} value={event.id.toString()}>
-                {event.name} | {new Date(event.date).toLocaleDateString(undefined, {month: 'long', day: 'numeric'})}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <div className="flex items-center space-x-2">
+        <Search className="w-5 h-5 text-gray-500" />
+        <Input
+          placeholder="Search students..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="max-w-sm"
+        />
       </div>
 
-      <div className="space-y-2">
-        <label className="text-sm font-medium">Select Student</label>
-        <Select
-          value={selectedStudent}
-          onValueChange={setSelectedStudent}
-          disabled={!selectedEvent || loading}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder={selectedEvent ? "Select a student" : "Select an event first"} />
-          </SelectTrigger>
-          <SelectContent>
-            {availableStudents.length > 0 ? (
-              availableStudents.map((student) => (
-                <SelectItem key={student.id} value={student.id.toString()}>
+      <div className="border rounded-lg">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>A-Number</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filteredStudents.map((student) => (
+              <TableRow 
+                key={student.id}
+                onClick={() => {
+                  setSelectedStudent(student)
+                  setShowConfirmDialog(true)
+                }}
+                className="cursor-pointer hover:bg-slate-100 active:bg-slate-200 transition-colors group"
+              >
+                <TableCell className="font-medium group-hover:text-slate-900">
                   {student.first_name} {student.last_name}
-                </SelectItem>
-              ))
-            ) : (
-              <SelectItem value="no-students" disabled>
-                {selectedEvent ? "All students checked in" : "Select an event first"}
-              </SelectItem>
+                </TableCell>
+                <TableCell className="group-hover:text-slate-900">
+                  {getANumber(student.email)}
+                </TableCell>
+              </TableRow>
+            ))}
+            {filteredStudents.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={2} className="text-center text-slate-500 py-4">
+                  No students available for check-in
+                </TableCell>
+              </TableRow>
             )}
-          </SelectContent>
-        </Select>
+          </TableBody>
+        </Table>
       </div>
 
-      <Button 
-        onClick={handleCheckIn}
-        disabled={!selectedEvent || !selectedStudent || loading}
-        className="w-full"
-      >
-        Check In
-      </Button>
+      <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Check-In</DialogTitle>
+          </DialogHeader>
+          <p>
+            Are you sure you want to check in{" "}
+            {selectedStudent?.first_name} {selectedStudent?.last_name} ({getANumber(selectedStudent?.email || "")})?
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowConfirmDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleConfirmCheckIn}>
+              Confirm Check-In
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
 
-export default CheckInStudents 
+export default CheckInStudents
