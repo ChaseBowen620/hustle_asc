@@ -10,11 +10,13 @@ import {
   SheetTrigger,
 } from "./ui/sheet"
 import { cn } from "../lib/utils"
+import { useAuth } from "@/hooks/useAuth"
 
-function Navbar({ updateUser }) {
+function Navbar() {
+  const { user, logout, isAdmin } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
-  const user = JSON.parse(localStorage.getItem('user') || 'null')
+  const userIsAdmin = isAdmin(user)
 
   const getInitials = (name) => {
     return name
@@ -27,16 +29,35 @@ function Navbar({ updateUser }) {
   const handleSignOut = () => {
     delete axios.defaults.headers.common['Authorization']
     localStorage.removeItem('user')
-    updateUser(null)
+    logout()
     navigate('/')
   }
 
-  if (!user) return null
+  if (!userIsAdmin) {
+    return (
+      <nav className="bg-slate-800 text-white">
+        <div className="container mx-auto px-4">
+          <div className="flex justify-between h-16 items-center">
+            <div className="text-xl font-bold">HUSTLE</div>
+            <Button 
+              onClick={handleSignOut}
+              variant="outline"
+              size="sm"
+              className="text-black border-white hover:bg-slate-700 hover:text-black"
+            >
+              Sign Out
+            </Button>
+          </div>
+        </div>
+      </nav>
+    )
+  }
 
+  // Return full navbar for admin
   const navLinks = [
-    { path: "/events", label: "Events" },
-    { path: "/attendance", label: "Attendance" },
-    { path: "/positions", label: "Admin" },
+    { path: "/events", label: "Events List" },
+    { path: "/check-in", label: "Check In" },
+    { path: "/admin", label: "Admin" },
   ]
 
   return (
@@ -103,8 +124,9 @@ function Navbar({ updateUser }) {
           <div className="hidden md:block">
             <Button 
               onClick={handleSignOut}
-              variant="ghost"
-              className="text-slate-300 hover:text-white"
+              variant="outline"
+              size="sm"
+              className="text-black border-white hover:bg-slate-700 hover:text-black"
             >
               Sign Out
             </Button>

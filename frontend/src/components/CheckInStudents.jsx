@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/select"
 import axios from "axios"
 import { useToast } from "../hooks/use-toast"
+import { API_URL } from '../config/api'
 
 function CheckInStudents({ events, students, onCheckIn }) {
   const [selectedEvent, setSelectedEvent] = useState("")
@@ -22,7 +23,7 @@ function CheckInStudents({ events, students, onCheckIn }) {
       if (selectedEvent) {
         try {
           setLoading(true)
-          const response = await axios.get(`http://localhost:8000/api/attendance/?event=${selectedEvent}`)
+          const response = await axios.get(`${ API_URL }/api/attendance/?event=${selectedEvent}`)
           setAttendance(response.data)
         } catch (error) {
           console.error('Error fetching attendance:', error)
@@ -54,7 +55,7 @@ function CheckInStudents({ events, students, onCheckIn }) {
         })
         setSelectedStudent("")
         // Refresh attendance data
-        const response = await axios.get(`http://localhost:8000/api/attendance/?event=${selectedEvent}`)
+        const response = await axios.get(`${API_URL}/api/attendance/?event=${selectedEvent}`)
         setAttendance(response.data)
       } catch (error) {
         if (error.response?.data?.error === 'Student already checked in') {

@@ -30,15 +30,17 @@ function PublicNavbar() {
               About Us
             </Link>
           </div>
-          <Link to="/login">
-            <Button 
-              variant="outline"
-              size="sm"
-              className="text-black border-white hover:bg-slate-700"
-            >
-              Sign In
-            </Button>
-          </Link>
+          <div>
+            <Link to="/login">
+              <Button 
+                variant="outline"
+                size="sm"
+                className="text-black border-white hover:bg-slate-700 hover:text-black"
+              >
+                Sign In
+              </Button>
+            </Link>
+          </div>
         </div>
       </div>
     </nav>

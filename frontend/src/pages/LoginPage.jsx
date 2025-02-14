@@ -1,41 +1,41 @@
 import { useState } from "react"
-import { useNavigate } from "react-router-dom"
-import axios from "axios"
+import { useNavigate, Link } from "react-router-dom"
+import { useAuth } from "@/hooks/useAuth"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
-function LoginPage({ updateUser }) {
-  const [username, setUsername] = useState("")
+function LoginPage() {
+  const [identifier, setIdentifier] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const navigate = useNavigate()
+  const { login, isAdmin } = useAuth()
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError("")
     
     try {
-      const response = await axios.post('http://localhost:8000/api/token/', {
-        username,
-        password
-      })
-      
-      const userData = {
-        token: response.data.access,
-        refresh: response.data.refresh,
-        name: username // We'll update this with actual name when we get user details
+      // Convert identifier to proper format
+      let username = identifier.toLowerCase()
+      // If it's an email, extract the A-Number
+      if (username.includes('@')) {
+        username = username.split('@')[0]
       }
+      // Remove any spaces
+      username = username.trim()
       
-      localStorage.setItem('user', JSON.stringify(userData))
-      updateUser(userData)
+      const userData = await login(username, password)
       
-      // Set default Authorization header for future requests
-      axios.defaults.headers.common['Authorization'] = `Bearer ${response.data.access}`
-      
-      navigate('/events')
+      // Redirect based on user role
+      if (isAdmin(userData)) {
+        navigate('/events')
+      } else {
+        navigate('/dashboard')
+      }
     } catch (error) {
-      setError("Invalid username or password")
+      setError("Invalid credentials")
       console.error('Login error:', error)
     }
   }
@@ -51,9 +51,9 @@ function LoginPage({ updateUser }) {
             <div className="space-y-2">
               <Input
                 type="text"
-                placeholder="Username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                placeholder="A-Number or Email"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
                 required
               />
             </div>
@@ -72,6 +72,12 @@ function LoginPage({ updateUser }) {
             <Button type="submit" className="w-full">
               Sign In
             </Button>
+            <p className="text-sm text-center text-gray-500">
+              Don't have an account?{" "}
+              <Link to="/register" className="text-blue-500 hover:text-blue-600">
+                Create Account
+              </Link>
+            </p>
           </form>
         </CardContent>
       </Card>

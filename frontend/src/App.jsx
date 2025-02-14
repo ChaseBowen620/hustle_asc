@@ -2,68 +2,63 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-d
 import { useState, useEffect } from "react"
 import Navbar from "./components/Navbar"
 import PublicNavbar from "./components/PublicNavbar"
-import EventsPage from "./pages/EventsPage"
-import AttendancePage from "./pages/AttendancePage"
-import PositionsPage from "./pages/PositionsPage"
+import EventsListPage from "./pages/EventsListPage"
+import CheckInPage from "./pages/CheckInPage"
+import AdminPage from "./pages/AdminPage"
 import LoginPage from "./pages/LoginPage"
 import LandingPage from "./pages/LandingPage"
 import AboutPage from "./pages/AboutPage"
+import RegisterPage from "./pages/RegisterPage"
 import { Toaster } from "./components/ui/toaster"
+import { useAuth } from "@/hooks/useAuth"
+import StudentDashboard from "./pages/StudentDashboard"
 
 function PrivateRoute({ children }) {
-  const user = JSON.parse(localStorage.getItem('user') || 'null')
+  const { user } = useAuth()
   return user ? children : <Navigate to="/login" />
 }
 
 function App() {
-  const [user, setUser] = useState(JSON.parse(localStorage.getItem('user') || 'null'))
+  const { user, isAdmin } = useAuth()
+  const userIsAdmin = isAdmin(user)
 
-  useEffect(() => {
-    const handleStorageChange = () => {
-      setUser(JSON.parse(localStorage.getItem('user') || 'null'))
-    }
-
-    window.addEventListener('storage', handleStorageChange)
-    return () => window.removeEventListener('storage', handleStorageChange)
-  }, [])
-
-  // Function to update user state
-  const updateUser = (userData) => {
-    setUser(userData)
+  // Redirect if logged in
+  if (user && window.location.pathname === '/') {
+    return <Navigate to={userIsAdmin ? "/events" : "/dashboard"} replace />
   }
 
   return (
     <Router>
       <div>
-        {user ? <Navbar updateUser={updateUser} /> : <PublicNavbar />}
+        {user ? <Navbar /> : <PublicNavbar />}
         <Routes>
+          {/* Public routes */}
           <Route path="/" element={<LandingPage />} />
           <Route path="/about" element={<AboutPage />} />
-          <Route path="/login" element={<LoginPage updateUser={updateUser} />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+
+          {/* Student route */}
           <Route
-            path="/events"
+            path="/dashboard"
             element={
               <PrivateRoute>
-                <EventsPage />
+                <StudentDashboard />
               </PrivateRoute>
             }
           />
-          <Route
-            path="/attendance"
-            element={
-              <PrivateRoute>
-                <AttendancePage />
-              </PrivateRoute>
-            }
-          />
-          <Route
-            path="/positions"
-            element={
-              <PrivateRoute>
-                <PositionsPage />
-              </PrivateRoute>
-            }
-          />
+
+          {/* Admin routes */}
+          {userIsAdmin && (
+            <>
+              <Route path="/events" element={<EventsListPage />} />
+              <Route path="/check-in" element={<CheckInPage />} />
+              <Route path="/admin" element={<AdminPage />} />
+            </>
+          )}
+
+          {/* Catch all redirect */}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         <Toaster />
       </div>

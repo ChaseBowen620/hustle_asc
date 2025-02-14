@@ -26,7 +26,7 @@ SECRET_KEY = 'django-insecure-qe#(77o5-q0*6ftwbxo-o4c3r=-jao!q0-%__-o&9l#saysy8m
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["ec2-52-86-62-188.compute-1.amazonaws.com", "localhost", "0.0.0.0"]
 
 
 # Application definition
@@ -129,8 +129,10 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Add CORS settings
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",  # Your Vite frontend URL
+    "http://localhost:5173",
+    "http://ec2-52-86-62-188.compute-1.amazonaws.com:5173"  # Your Vite frontend URL
 ]
+
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (

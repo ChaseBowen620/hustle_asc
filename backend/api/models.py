@@ -1,9 +1,18 @@
 from django.db import models
 from django.utils import timezone
+from django.contrib.auth.models import User
+from django.db.models.signals import post_save
+from django.dispatch import receiver
 
 # Create your models here.
 
 class Student(models.Model):
+    id = models.AutoField(primary_key=True)
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name='student_profile'
+    )
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
     email = models.EmailField(unique=True)
@@ -16,7 +25,18 @@ class Student(models.Model):
     def total_points(self):
         return sum(attendance.event.points for attendance in self.attendances.all())
 
+@receiver(post_save, sender=User)
+def create_student_profile(sender, instance, created, **kwargs):
+    if created and not hasattr(instance, 'student'):
+        Student.objects.create(
+            user=instance,
+            first_name=instance.first_name,
+            last_name=instance.last_name,
+            email=instance.email
+        )
+
 class Event(models.Model):
+    id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     date = models.DateTimeField()
@@ -32,8 +52,19 @@ class Event(models.Model):
         return self.date < timezone.now()
 
 class Attendance(models.Model):
-    student = models.ForeignKey(Student, related_name='attendances', on_delete=models.CASCADE)
-    event = models.ForeignKey(Event, related_name='attendances', on_delete=models.CASCADE)
+    id = models.AutoField(primary_key=True)
+    student = models.ForeignKey(
+        Student,
+        on_delete=models.CASCADE,
+        related_name='attendances',
+        to_field='id'
+    )
+    event = models.ForeignKey(
+        Event,
+        on_delete=models.CASCADE,
+        related_name='attendances',
+        to_field='id'
+    )
     checked_in_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -44,6 +75,7 @@ class Attendance(models.Model):
         return f"{self.student} at {self.event}"
 
 class Semester(models.Model):
+    id = models.AutoField(primary_key=True)
     SEASON_CHOICES = [
         ('FALL', 'Fall'),
         ('SPRING', 'Spring'),
@@ -61,6 +93,7 @@ class Semester(models.Model):
         return f"{self.season} {self.year}"
 
 class Professor(models.Model):
+    id = models.AutoField(primary_key=True)
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
     
@@ -68,9 +101,18 @@ class Professor(models.Model):
         return f"{self.first_name} {self.last_name}"
 
 class Class(models.Model):
+    id = models.AutoField(primary_key=True)
     course_code = models.CharField(max_length=20)
-    professor = models.ForeignKey(Professor, on_delete=models.CASCADE)
-    semester = models.ForeignKey(Semester, on_delete=models.CASCADE)
+    professor = models.ForeignKey(
+        Professor,
+        on_delete=models.CASCADE,
+        to_field='id'
+    )
+    semester = models.ForeignKey(
+        Semester,
+        on_delete=models.CASCADE,
+        to_field='id'
+    )
     
     class Meta:
         verbose_name_plural = "Classes"
@@ -80,8 +122,17 @@ class Class(models.Model):
         return f"{self.course_code} - {self.professor}"
 
 class TeachingAssistant(models.Model):
-    student = models.ForeignKey('Student', on_delete=models.CASCADE)
-    class_assigned = models.ForeignKey(Class, on_delete=models.CASCADE)
+    id = models.AutoField(primary_key=True)
+    student = models.ForeignKey(
+        Student,
+        on_delete=models.CASCADE,
+        to_field='id'
+    )
+    class_assigned = models.ForeignKey(
+        Class,
+        on_delete=models.CASCADE,
+        to_field='id'
+    )
     points_awarded = models.IntegerField(default=5, editable=False)  # Fixed at 5 points
     
     class Meta:

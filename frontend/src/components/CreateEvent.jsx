@@ -1,9 +1,9 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 
-function CreateEvent({ onCreateEvent }) {
+function CreateEvent({ onCreateEvent, initialData }) {
   const [eventData, setEventData] = useState({
     name: "",
     description: "",
@@ -12,6 +12,18 @@ function CreateEvent({ onCreateEvent }) {
     date: "",
   })
 
+  useEffect(() => {
+    if (initialData) {
+      setEventData({
+        name: initialData.name,
+        description: initialData.description || "",
+        location: initialData.location,
+        points: initialData.points.toString(),
+        date: new Date(initialData.date).toISOString().slice(0, 16), // Format for datetime-local input
+      })
+    }
+  }, [initialData])
+
   const handleSubmit = (e) => {
     e.preventDefault()
     onCreateEvent({
@@ -19,7 +31,9 @@ function CreateEvent({ onCreateEvent }) {
       points: parseInt(eventData.points),
       date: new Date(eventData.date).toISOString(),
     })
-    setEventData({ name: "", description: "", location: "", points: "", date: "" })
+    if (!initialData) {
+      setEventData({ name: "", description: "", location: "", points: "", date: "" })
+    }
   }
 
   return (
@@ -63,7 +77,7 @@ function CreateEvent({ onCreateEvent }) {
       </div>
 
       <div className="space-y-2">
-        <label className="text-sm font-medium">Date</label>
+        <label className="text-sm font-medium">Date and Time</label>
         <Input
           type="datetime-local"
           value={eventData.date}
@@ -73,7 +87,7 @@ function CreateEvent({ onCreateEvent }) {
       </div>
 
       <Button type="submit" className="w-full">
-        Create Event
+        {initialData ? 'Update Event' : 'Create Event'}
       </Button>
     </form>
   )

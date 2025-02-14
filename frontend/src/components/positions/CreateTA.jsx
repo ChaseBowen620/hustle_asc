@@ -9,6 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { API_URL } from "../../config/api"
 
 function CreateTA({ onSuccess }) {
   const [studentId, setStudentId] = useState("")
@@ -20,11 +21,9 @@ function CreateTA({ onSuccess }) {
     const fetchData = async () => {
       try {
         const [studentsRes, classesRes] = await Promise.all([
-          axios.get('http://localhost:8000/api/students/'),
-          axios.get('http://localhost:8000/api/classes/')
+          axios.get(`${API_URL}/api/students/`),
+          axios.get(`${API_URL}/api/classes/`)
         ])
-        console.log('Students:', studentsRes.data)
-        console.log('Classes:', classesRes.data)
         setStudents(studentsRes.data)
         setClasses(classesRes.data)
       } catch (error) {
@@ -41,7 +40,7 @@ function CreateTA({ onSuccess }) {
         class_assigned: classId
     })
     try {
-        await axios.post('http://localhost:8000/api/teaching-assistants/', {
+        await axios.post(`${API_URL}/api/teaching-assistants/`, {
             student: studentId,
             class_assigned: classId
         })

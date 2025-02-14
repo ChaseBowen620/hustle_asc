@@ -4,6 +4,7 @@ import QuickActions from "../components/admin/QuickActions"
 import OverviewCards from "../components/admin/OverviewCards"
 import AdminDialogs from "../components/admin/AdminDialogs"
 import MainView from "../components/admin/MainView"
+import { API_URL } from '../config/api'
 
 function PositionsPage() {
   const [activeDialog, setActiveDialog] = useState(null)
@@ -16,19 +17,13 @@ function PositionsPage() {
 
   const fetchTAs = async () => {
     try {
-      console.log('Starting TA fetch...')
-      const response = await axios.get('http://localhost:8000/api/teaching-assistants/')
-      console.log('TA response status:', response.status)
-      console.log('TA response headers:', response.headers)
-      console.log('TA raw response:', response)
+      const response = await axios.get(`${API_URL}/api/teaching-assistants/`)
       
       if (response.data) {
-        console.log('TA data received:', response.data)
         if (Array.isArray(response.data)) {
           const sortedTAs = response.data.sort((a, b) => 
             a.student.first_name.localeCompare(b.student.first_name)
           )
-          console.log('Setting sorted TAs:', sortedTAs)
           setTAs(sortedTAs)
         } else {
           console.error('TA data is not an array:', response.data)
@@ -57,9 +52,9 @@ function PositionsPage() {
       
       // Fetch other data
       const [semestersRes, classesRes, professorsRes] = await Promise.all([
-        axios.get('http://localhost:8000/api/semesters/'),
-        axios.get('http://localhost:8000/api/classes/'),
-        axios.get('http://localhost:8000/api/professors/')
+        axios.get(`${API_URL}/api/semesters/`),
+        axios.get(`${API_URL}/api/classes/`),
+        axios.get(`${API_URL}/api/professors/`)
       ])
       
       if (Array.isArray(semestersRes.data)) {

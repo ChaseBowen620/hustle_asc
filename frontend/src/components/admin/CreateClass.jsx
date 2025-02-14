@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-
+import { API_URL } from "../../config/api"
 function CreateClass({ onSuccess }) {
   const [formData, setFormData] = useState({
     course_code: "",
@@ -26,8 +26,8 @@ function CreateClass({ onSuccess }) {
     const fetchData = async () => {
       try {
         const [professorsRes, semestersRes] = await Promise.all([
-          axios.get('http://localhost:8000/api/professors/'),
-          axios.get('http://localhost:8000/api/semesters/')
+          axios.get(`${API_URL}/api/professors/`),
+          axios.get(`${API_URL}/api/semesters/`)
         ])
         setProfessors(professorsRes.data)
         setSemesters(semestersRes.data)
@@ -43,7 +43,7 @@ function CreateClass({ onSuccess }) {
     setLoading(true)
     
     try {
-      await axios.post('http://localhost:8000/api/classes/', formData)
+      await axios.post(`${API_URL}/api/classes/`, formData)
       
       toast({
         title: "Success",

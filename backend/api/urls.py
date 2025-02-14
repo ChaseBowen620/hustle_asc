@@ -7,7 +7,8 @@ from .views import (
     SemesterViewSet,
     ProfessorViewSet,
     ClassViewSet,
-    TeachingAssistantViewSet
+    TeachingAssistantViewSet,
+    get_user_details
 )
 
 router = DefaultRouter()
@@ -21,4 +22,5 @@ router.register(r'teaching-assistants', TeachingAssistantViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
+    path('user/me/', get_user_details, name='user-details'),
 ]

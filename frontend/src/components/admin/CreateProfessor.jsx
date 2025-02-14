@@ -2,6 +2,7 @@ import { useState } from "react"
 import axios from "axios"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { API_URL } from "../../config/api"
 
 function CreateProfessor({ onSuccess }) {
   const [formData, setFormData] = useState({
@@ -14,7 +15,7 @@ function CreateProfessor({ onSuccess }) {
     e.preventDefault()
     setLoading(true)
     try {
-      await axios.post('http://localhost:8000/api/professors/', formData)
+      await axios.post(`${API_URL}/api/professors/`, formData)
       onSuccess()
     } catch (error) {
       console.error('Error creating professor:', error)

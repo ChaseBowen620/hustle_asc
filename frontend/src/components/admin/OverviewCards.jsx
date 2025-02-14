@@ -12,15 +12,7 @@ function OverviewCards({ stats }) {
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Active Classes</CardTitle>
-          <CardDescription>Current semester</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="text-3xl font-bold">{currentSemesterClasses.length}</div>
-        </CardContent>
-      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Teaching Assistants</CardTitle>
@@ -28,6 +20,15 @@ function OverviewCards({ stats }) {
         </CardHeader>
         <CardContent>
           <div className="text-3xl font-bold">{currentSemesterTAs.length}</div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Active Classes</CardTitle>
+          <CardDescription>Current semester</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="text-3xl font-bold">{currentSemesterClasses.length}</div>
         </CardContent>
       </Card>
       <Card>
