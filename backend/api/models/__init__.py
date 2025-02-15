@@ -17,3 +17,5 @@ __all__ = [
     'Class',
     'TeachingAssistant'
 ]
+
+# Hello!
