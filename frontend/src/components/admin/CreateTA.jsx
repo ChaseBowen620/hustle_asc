@@ -41,8 +41,11 @@ function CreateTA({ onSuccess }) {
     e.preventDefault()
     setLoading(true)
     
+    console.log('Submitting TA form data:', formData)
+    
     try {
-      await axios.post(`${API_URL}api/teaching-assistants/`, formData)
+      const response = await axios.post(`${API_URL}/api/teaching-assistants/`, formData)
+      console.log('Response:', response.data)
       
       toast({
         title: "Success",
@@ -57,6 +60,7 @@ function CreateTA({ onSuccess }) {
       
       if (onSuccess) onSuccess()
     } catch (error) {
+      console.error('Error details:', error.response?.data)
       toast({
         title: "Error",
         description: error.response?.data?.message || "Failed to create TA position",

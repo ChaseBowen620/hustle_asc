@@ -14,8 +14,8 @@ import { API_URL } from "../../config/api"
 function CreateClass({ onSuccess }) {
   const [formData, setFormData] = useState({
     course_code: "",
-    professor: "",
-    semester: ""
+    professor_id: "",
+    semester_id: ""
   })
   const [loading, setLoading] = useState(false)
   const [professors, setProfessors] = useState([])
@@ -42,8 +42,11 @@ function CreateClass({ onSuccess }) {
     e.preventDefault()
     setLoading(true)
     
+    console.log('Submitting form data:', formData)
+    
     try {
-      await axios.post(`${API_URL}/api/classes/`, formData)
+      const response = await axios.post(`${API_URL}/api/classes/`, formData)
+      console.log('Response:', response.data)
       
       toast({
         title: "Success",
@@ -53,12 +56,13 @@ function CreateClass({ onSuccess }) {
       
       setFormData({
         course_code: "",
-        professor: "",
-        semester: ""
+        professor_id: "",
+        semester_id: ""
       })
       
       if (onSuccess) onSuccess()
     } catch (error) {
+      console.error('Error details:', error.response?.data)
       toast({
         title: "Error",
         description: error.response?.data?.message || "Failed to create class",
@@ -86,10 +90,10 @@ function CreateClass({ onSuccess }) {
       
       <div className="space-y-2">
         <Select
-          value={formData.professor}
+          value={formData.professor_id}
           onValueChange={(value) => setFormData(prev => ({
             ...prev,
-            professor: value
+            professor_id: value
           }))}
           required
         >
@@ -108,10 +112,10 @@ function CreateClass({ onSuccess }) {
       
       <div className="space-y-2">
         <Select
-          value={formData.semester}
+          value={formData.semester_id}
           onValueChange={(value) => setFormData(prev => ({
             ...prev,
-            semester: value
+            semester_id: value
           }))}
           required
         >
