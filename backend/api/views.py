@@ -4,7 +4,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from django.utils import timezone
-from .models import Student, Event, Attendance, Semester, Professor, Class, TeachingAssistant
+from .models import Student, Event, Attendance, Semester, Professor, Class, TeachingAssistant, EventType
 from .serializers import (
     StudentSerializer, 
     EventSerializer, 
@@ -15,7 +15,8 @@ from .serializers import (
     TeachingAssistantSerializer,
     ClassCreateSerializer,
     TeachingAssistantCreateSerializer,
-    ClassListSerializer
+    ClassListSerializer,
+    EventTypeSerializer
 )
 from django.contrib.auth.models import User, Group
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -227,3 +228,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
+
+class EventTypeViewSet(viewsets.ModelViewSet):
+    queryset = EventType.objects.all()
+    serializer_class = EventTypeSerializer

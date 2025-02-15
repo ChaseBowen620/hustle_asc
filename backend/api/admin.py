@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Student, Event, Attendance, Semester, Professor, Class, TeachingAssistant
+from .models import Student, Event, Attendance, Semester, Professor, Class, TeachingAssistant, EventType
 
 @admin.register(Student)
 class StudentAdmin(admin.ModelAdmin):
@@ -8,8 +8,8 @@ class StudentAdmin(admin.ModelAdmin):
 
 @admin.register(Event)
 class EventAdmin(admin.ModelAdmin):
-    list_display = ('id', 'name', 'date', 'location', 'points', 'has_passed')
-    list_filter = ('date',)
+    list_display = ('id', 'name', 'event_type', 'date', 'location', 'points', 'has_passed')
+    list_filter = ('date', 'event_type')
     search_fields = ('id', 'name', 'location')
 
 @admin.register(Attendance)
@@ -40,4 +40,9 @@ class TeachingAssistantAdmin(admin.ModelAdmin):
     list_display = ('id', 'student', 'class_assigned', 'points_awarded')
     list_filter = ('class_assigned__semester', 'class_assigned__professor')
     search_fields = ('id', 'student__id', 'class_assigned__id')
+
+@admin.register(EventType)
+class EventTypeAdmin(admin.ModelAdmin):
+    list_display = ('id', 'name', 'description', 'created_at')
+    search_fields = ('name', 'description')
 

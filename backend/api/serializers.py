@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Student, Event, Attendance, Semester, Professor, Class, TeachingAssistant
+from .models import Student, Event, Attendance, Semester, Professor, Class, TeachingAssistant, EventType
 
 class StudentSerializer(serializers.ModelSerializer):
     total_points = serializers.IntegerField(read_only=True)
@@ -10,10 +10,11 @@ class StudentSerializer(serializers.ModelSerializer):
 
 class EventSerializer(serializers.ModelSerializer):
     has_passed = serializers.BooleanField(read_only=True)
+    event_type_name = serializers.CharField(source='event_type.name', read_only=True)
     
     class Meta:
         model = Event
-        fields = '__all__'
+        fields = ['id', 'name', 'event_type', 'event_type_name', 'description', 'date', 'location', 'points', 'has_passed']
 
 class AttendanceSerializer(serializers.ModelSerializer):
     student = StudentSerializer(read_only=True)
@@ -84,3 +85,8 @@ class TeachingAssistantCreateSerializer(serializers.ModelSerializer):
             'student': {'required': True},
             'class_assigned': {'required': True}
         }
+
+class EventTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EventType
+        fields = '__all__'

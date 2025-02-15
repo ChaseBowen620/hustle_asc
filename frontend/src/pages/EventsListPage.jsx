@@ -12,6 +12,12 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs"
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -36,6 +42,7 @@ function EventsListPage() {
   const [editingEvent, setEditingEvent] = useState(null)
   const [selectedEvent, setSelectedEvent] = useState(null)
   const [showAttendees, setShowAttendees] = useState(false)
+  const [activeTab, setActiveTab] = useState("upcoming")
 
   useEffect(() => {
     fetchEvents()
@@ -73,7 +80,8 @@ function EventsListPage() {
         description: newEvent.description || "",
         date: newEvent.date,
         location: newEvent.location,
-        points: parseInt(newEvent.points)
+        points: parseInt(newEvent.points),
+        event_type: newEvent.event_type
       })
       setEvents([...events, response.data])
       setShowCreateDialog(false)
@@ -89,7 +97,8 @@ function EventsListPage() {
         description: updatedEvent.description || "",
         date: updatedEvent.date,
         location: updatedEvent.location,
-        points: parseInt(updatedEvent.points)
+        points: parseInt(updatedEvent.points),
+        event_type: updatedEvent.event_type
       })
       setEvents(events.map(event => 
         event.id === editingEvent.id ? response.data : event
@@ -145,9 +154,97 @@ function EventsListPage() {
   const filteredEvents = events
     .filter(event => 
       event.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      event.location.toLowerCase().includes(searchTerm.toLowerCase())
+      event.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      event.event_type_name.toLowerCase().includes(searchTerm.toLowerCase())
     )
-    .sort((a, b) => new Date(b.date) - new Date(a.date))
+    .filter(event => {
+      const eventDate = new Date(event.date)
+      const now = new Date()
+      return activeTab === "upcoming" ? eventDate > now : eventDate <= now
+    })
+    .sort((a, b) => {
+      const dateA = new Date(a.date)
+      const dateB = new Date(b.date)
+      // Ascending for upcoming (closest first), descending for past (most recent first)
+      return activeTab === "upcoming" 
+        ? dateA - dateB  // Ascending
+        : dateB - dateA  // Descending
+    })
+
+  const EventsTable = ({ events, showAttendance }) => (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Type</TableHead>
+          <TableHead>Name</TableHead>
+          <TableHead>Date</TableHead>
+          <TableHead className="hidden sm:table-cell">Location</TableHead>
+          <TableHead className="hidden sm:table-cell">Points</TableHead>
+          {showAttendance && <TableHead>Attendance</TableHead>}
+          <TableHead className="w-[70px]"></TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {events.map((event) => (
+          <TableRow key={event.id}>
+            <TableCell className="font-medium">{event.event_type_name}</TableCell>
+            <TableCell>{event.name}</TableCell>
+            <TableCell>
+              <span className="sm:hidden">
+                {format(new Date(event.date), 'MMM d, yyyy')}
+              </span>
+              <span className="hidden sm:inline">
+                {format(new Date(event.date), 'MMM d, yyyy h:mm a')}
+              </span>
+            </TableCell>
+            <TableCell className="hidden sm:table-cell">{event.location}</TableCell>
+            <TableCell className="hidden sm:table-cell">{event.points}</TableCell>
+            {showAttendance && (
+              <TableCell>
+                <Button 
+                  variant="outline"
+                  size="sm"
+                  className={`${event.attendees?.length > 0 
+                    ? "bg-slate-50 hover:bg-slate-300 transition-colors"
+                    : "bg-slate-100 text-slate-400 cursor-not-allowed"
+                  }`}
+                  onClick={() => {
+                    if (event.attendees?.length > 0) {
+                      setSelectedEvent(event)
+                      setShowAttendees(true)
+                    }
+                  }}
+                  disabled={!event.attendees?.length}
+                >
+                  {event.attendees?.length || 0} <ClipboardList className="h-4 w-4 inline ml-1" />
+                </Button>
+              </TableCell>
+            )}
+            <TableCell>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="h-8 w-8 p-0">
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => setEditingEvent(event)}>
+                    Edit
+                  </DropdownMenuItem>
+                  <DropdownMenuItem 
+                    onClick={() => handleDeleteEvent(event.id)}
+                    className="text-red-600"
+                  >
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  )
 
   return (
     <div className="space-y-6">
@@ -169,77 +266,31 @@ function EventsListPage() {
       <div className="flex items-center space-x-2">
         <Search className="w-5 h-5 text-gray-500" />
         <Input
-          placeholder="Search events..."
+          placeholder="Search by name or event type..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="max-w-sm"
         />
       </div>
 
-      <div className="border rounded-lg">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Date</TableHead>
-              <TableHead className="hidden sm:table-cell">Location</TableHead>
-              <TableHead className="hidden sm:table-cell">Points</TableHead>
-              <TableHead>Attendance</TableHead>
-              <TableHead className="w-[70px]"></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredEvents.map((event) => (
-              <TableRow key={event.id}>
-                <TableCell className="font-medium">{event.name}</TableCell>
-                <TableCell>
-                  <span className="sm:hidden">
-                    {format(new Date(event.date), 'MMM d, yyyy')}
-                  </span>
-                  <span className="hidden sm:inline">
-                    {format(new Date(event.date), 'MMM d, yyyy h:mm a')}
-                  </span>
-                </TableCell>
-                <TableCell className="hidden sm:table-cell">{event.location}</TableCell>
-                <TableCell className="hidden sm:table-cell">{event.points}</TableCell>
-                <TableCell>
-                  <Button 
-                    variant="outline"
-                    size="sm"
-                    className="bg-slate-50 hover:bg-slate-300 transition-colors"
-                    onClick={() => {
-                      setSelectedEvent(event)
-                      setShowAttendees(true)
-                    }}
-                  >
-                    {event.attendees?.length || 0} <ClipboardList className="h-4 w-4 inline ml-1" />
-                  </Button>
-                </TableCell>
-                <TableCell>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" className="h-8 w-8 p-0">
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => setEditingEvent(event)}>
-                        Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuItem 
-                        onClick={() => handleDeleteEvent(event.id)}
-                        className="text-red-600"
-                      >
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+      <Tabs defaultValue="upcoming" onValueChange={setActiveTab} className="w-full">
+        <div className="flex justify-center">
+          <TabsList className="w-full grid grid-cols-2">
+            <TabsTrigger value="upcoming">Upcoming Events</TabsTrigger>
+            <TabsTrigger value="past">Past Events</TabsTrigger>
+          </TabsList>
+        </div>
+        <TabsContent value="upcoming">
+          <div className="border rounded-lg">
+            <EventsTable events={filteredEvents} showAttendance={false} />
+          </div>
+        </TabsContent>
+        <TabsContent value="past">
+          <div className="border rounded-lg">
+            <EventsTable events={filteredEvents} showAttendance={true} />
+          </div>
+        </TabsContent>
+      </Tabs>
 
       {/* Edit Event Dialog */}
       <Dialog open={!!editingEvent} onOpenChange={() => setEditingEvent(null)}>

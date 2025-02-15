@@ -8,6 +8,7 @@ from .views import (
     ProfessorViewSet,
     ClassViewSet,
     TeachingAssistantViewSet,
+    EventTypeViewSet,
     get_user_details
 )
 
@@ -19,6 +20,7 @@ router.register(r'semesters', SemesterViewSet)
 router.register(r'professors', ProfessorViewSet)
 router.register(r'classes', ClassViewSet)
 router.register(r'teaching-assistants', TeachingAssistantViewSet)
+router.register(r'event-types', EventTypeViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

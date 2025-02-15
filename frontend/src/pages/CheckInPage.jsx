@@ -26,6 +26,7 @@ function CheckInPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedEvent, setSelectedEvent] = useState(null)
   const { toast } = useToast()
+  const [showAllUpcoming, setShowAllUpcoming] = useState(false)
 
   useEffect(() => {
     fetchEvents()
@@ -127,11 +128,28 @@ function CheckInPage() {
   }
 
   const filteredEvents = events
+    .filter(event => {
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      
+      const tomorrow = new Date(today)
+      tomorrow.setDate(tomorrow.getDate() + 1)
+      
+      const eventDate = new Date(event.date)
+      const now = new Date()
+      
+      if (showAllUpcoming) {
+        return eventDate >= now // Show all future events
+      } else {
+        return eventDate >= today && eventDate < tomorrow // Show only today's events
+      }
+    })
     .filter(event =>
       event.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      event.location.toLowerCase().includes(searchTerm.toLowerCase())
+      event.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      event.event_type_name.toLowerCase().includes(searchTerm.toLowerCase())
     )
-    .sort((a, b) => new Date(b.date) - new Date(a.date))
+    .sort((a, b) => new Date(a.date) - new Date(b.date))
 
   return (
     <div className="space-y-6">
@@ -142,40 +160,52 @@ function CheckInPage() {
           <div className="flex items-center space-x-2">
             <Search className="w-5 h-5 text-gray-500" />
             <Input
-              placeholder="Search events..."
+              placeholder="Search events by name, type, or location..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="max-w-sm"
             />
           </div>
 
-          <div className="border rounded-lg">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Location</TableHead>
-                  <TableHead>Points</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredEvents.map((event) => (
-                  <TableRow 
-                    key={event.id}
-                    onClick={() => handleEventSelect(event)}
-                    className="cursor-pointer hover:bg-slate-100 active:bg-slate-200 transition-colors group"
-                  >
-                    <TableCell className="font-medium group-hover:text-slate-900">{event.name}</TableCell>
-                    <TableCell className="group-hover:text-slate-900">
-                      {format(new Date(event.date), 'MMM d, yyyy h:mm a')}
-                    </TableCell>
-                    <TableCell className="group-hover:text-slate-900">{event.location}</TableCell>
-                    <TableCell className="group-hover:text-slate-900">{event.points}</TableCell>
+          <div className="space-y-4">
+            <div className="border rounded-lg">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Location</TableHead>
+                    <TableHead>Points</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {filteredEvents.map((event) => (
+                    <TableRow 
+                      key={event.id}
+                      onClick={() => handleEventSelect(event)}
+                      className="cursor-pointer hover:bg-slate-100 active:bg-slate-200 transition-colors group"
+                    >
+                      <TableCell className="font-medium group-hover:text-slate-900">{event.event_type_name}</TableCell>
+                      <TableCell className="group-hover:text-slate-900">{event.name}</TableCell>
+                      <TableCell className="group-hover:text-slate-900">
+                        {format(new Date(event.date), 'h:mm a')}
+                      </TableCell>
+                      <TableCell className="group-hover:text-slate-900">{event.location}</TableCell>
+                      <TableCell className="group-hover:text-slate-900">{event.points}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            
+            <Button
+              variant="outline"
+              onClick={() => setShowAllUpcoming(!showAllUpcoming)}
+              className="w-full"
+            >
+              {showAllUpcoming ? "Show Today's Events Only" : "Show All Upcoming Events"}
+            </Button>
           </div>
         </>
       ) : (
