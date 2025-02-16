@@ -13,6 +13,7 @@ import RegisterPage from "./pages/RegisterPage"
 import { Toaster } from "./components/ui/toaster"
 import { useAuth } from "@/hooks/useAuth"
 import StudentDashboard from "./pages/StudentDashboard"
+import AdminDashboardPage from "./pages/AdminDashboardPage"
 
 function PrivateRoute({ children }) {
   const { user } = useAuth()
@@ -25,7 +26,7 @@ function App() {
 
   // Redirect if logged in
   if (user && window.location.pathname === '/') {
-    return <Navigate to={userIsAdmin ? "/events" : "/dashboard"} replace />
+    return <Navigate to={userIsAdmin ? "/admin/dashboard" : "/dashboard"} replace />
   }
 
   return (
@@ -53,6 +54,7 @@ function App() {
             {/* Admin routes */}
             {userIsAdmin && (
               <>
+                <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
                 <Route path="/events" element={<EventsListPage />} />
                 <Route path="/check-in" element={<CheckInPage />} />
                 <Route path="/check-in/:eventId" element={<CheckInPage />} />

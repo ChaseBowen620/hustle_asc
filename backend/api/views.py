@@ -23,6 +23,10 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 import re
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from django.db.models import Count, Sum
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
+import calendar
 
 class StudentViewSet(viewsets.ModelViewSet):
     queryset = Student.objects.all().order_by('first_name', 'last_name')
@@ -232,3 +236,109 @@ class CustomTokenObtainPairView(TokenObtainPairView):
 class EventTypeViewSet(viewsets.ModelViewSet):
     queryset = EventType.objects.all()
     serializer_class = EventTypeSerializer
+
+@api_view(['GET'])
+def total_students(request):
+    count = Student.objects.count()
+    return Response({'count': count})
+
+@api_view(['GET'])
+def participating_students(request):
+    filter_type = request.GET.get('filter', 'semester')
+    
+    # Base query
+    query = Student.objects
+    
+    # Get current date
+    now = timezone.now()
+    
+    if filter_type == 'semester':
+        current_semester = Semester.objects.get(is_current=True)
+        count = query.filter(
+            attendances__event__semester=current_semester
+        ).distinct().count()
+    
+    elif filter_type == 'year':
+        year = now.year if now.month >= 8 else now.year - 1
+        academic_year_start = timezone.make_aware(
+            datetime(year, 8, 1)
+        )
+        count = query.filter(
+            attendances__event__date__gte=academic_year_start
+        ).distinct().count()
+    
+    else:  # 'all'
+        count = query.filter(attendances__isnull=False).distinct().count()
+    
+    return Response({'count': count})
+
+@api_view(['GET'])
+def student_points(request):
+    filter_type = request.GET.get('filter', 'semester')
+    
+    # Base query
+    students = Student.objects.all()
+    
+    # Get current date
+    now = timezone.now()
+    
+    if filter_type == 'semester':
+        # Filter by current semester
+        current_semester = Semester.objects.get(is_current=True)
+        students = students.annotate(
+            total_points=Sum(
+                'attendances__event__points',
+                filter=models.Q(attendances__event__semester=current_semester)
+            )
+        )
+    
+    elif filter_type == 'year':
+        # Calculate academic year start (August 1st of current or previous year)
+        year = now.year if now.month >= 8 else now.year - 1
+        academic_year_start = timezone.make_aware(
+            datetime(year, 8, 1)
+        )
+        
+        students = students.annotate(
+            total_points=Sum(
+                'attendances__event__points',
+                filter=models.Q(attendances__event__date__gte=academic_year_start)
+            )
+        )
+    
+    else:  # 'all'
+        students = students.annotate(
+            total_points=Sum('attendances__event__points')
+        )
+
+    # Order by points (handling NULL values)
+    students = students.order_by(models.F('total_points').desc(nulls_last=True))
+    
+    data = [{
+        'id': student.id,
+        'first_name': student.first_name,
+        'last_name': student.last_name,
+        'email': student.email,
+        'total_points': student.total_points or 0
+    } for student in students]
+    
+    return Response(data)
+
+@api_view(['GET'])
+def attendance_overview(request):
+    attendance_data = Attendance.objects.annotate(
+        date=models.functions.TruncMonth('checked_in_at')
+    ).values('date', 'event__event_type__name').annotate(
+        count=Count('id')
+    ).order_by('date')
+
+    # Transform data for frontend
+    transformed_data = []
+    for entry in attendance_data:
+        transformed_data.append({
+            'date': entry['date'],
+            'event_type': entry['event__event_type__name'],
+            'attendance_counts': entry['count']
+        })
+
+    return Response(transformed_data)

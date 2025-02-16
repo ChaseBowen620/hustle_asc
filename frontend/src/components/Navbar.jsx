@@ -55,6 +55,7 @@ function Navbar() {
 
   // Return full navbar for admin
   const navLinks = [
+    { path: "/admin/dashboard", label: "Dashboard" },
     { path: "/events", label: "Events List" },
     { path: "/check-in", label: "Check In" },
     { path: "/admin", label: "Admin" },
