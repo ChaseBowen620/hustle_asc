@@ -141,7 +141,8 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Add CORS settings
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
-    "http://ec2-52-86-62-188.compute-1.amazonaws.com:5173"  # Your Vite frontend URL
+    "http://ec2-52-86-62-188.compute-1.amazonaws.com:5173",
+    "https://data5570-mycode.onrender.com"  # Your Vite frontend URL
 ]
 
 

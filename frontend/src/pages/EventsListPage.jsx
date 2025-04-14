@@ -307,38 +307,40 @@ function EventsListPage() {
 
       {/* Attendance Dialog */}
       <Dialog open={showAttendees} onOpenChange={setShowAttendees}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>
               {selectedEvent?.name} - Attendance Details
             </DialogTitle>
           </DialogHeader>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Check-in Time</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {selectedEvent?.attendees
-                .sort((a, b) => 
-                  `${a.student.last_name} ${a.student.first_name}`
-                    .localeCompare(`${b.student.last_name} ${b.student.first_name}`)
-                )
-                .map((record) => (
-                  <TableRow key={record.id}>
-                    <TableCell>
-                      {record.student.first_name} {record.student.last_name}
-                    </TableCell>
-                    <TableCell>
-                      {format(record.checked_in_at, 'h:mm a')}
-                    </TableCell>
-                  </TableRow>
-                ))}
-            </TableBody>
-          </Table>
-          <DialogFooter>
+          <div className="flex-1 overflow-y-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Check-in Time</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {selectedEvent?.attendees
+                  .sort((a, b) => 
+                    `${a.student.last_name} ${a.student.first_name}`
+                      .localeCompare(`${b.student.last_name} ${b.student.first_name}`)
+                  )
+                  .map((record) => (
+                    <TableRow key={record.id}>
+                      <TableCell>
+                        {record.student.first_name} {record.student.last_name}
+                      </TableCell>
+                      <TableCell>
+                        {format(record.checked_in_at, 'h:mm a')}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+              </TableBody>
+            </Table>
+          </div>
+          <DialogFooter className="mt-4">
             <Button
               variant="outline"
               onClick={() => handleDownloadCSV(selectedEvent)}

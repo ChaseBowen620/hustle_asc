@@ -46,7 +46,7 @@ router.register(r'event-types', EventTypeViewSet)
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/', include(router.urls)),
+    path('api/', include('api.urls')),
     path('api/register/', register_student, name='register-student'),
     path('api/user/me/', get_user_details, name='user-details'),
     path('api-auth/', include('rest_framework.urls', namespace='rest_framework')),
