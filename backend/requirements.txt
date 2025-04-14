@@ -9,3 +9,4 @@ timedelta==2020.12.3
 typing_extensions==4.12.2
 gunicorn==21.2.0
 psycopg2-binary==2.9.9
+python-dateutil==2.8.2
