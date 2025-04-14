@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
 from pathlib import Path
+import os
 from datetime import timedelta
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -21,13 +22,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-qe#(77o5-q0*6ftwbxo-o4c3r=-jao!q0-%__-o&9l#saysy8m'
+SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-qe#(77o5-q0*6ftwbxo-o4c3r=-jao!q0-%__-o&9l#saysy8m')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
-ALLOWED_HOSTS = ["ec2-52-86-62-188.compute-1.amazonaws.com", "localhost", "0.0.0.0"]
-
+# ALLOWED_HOSTS = ["ec2-52-86-62-188.compute-1.amazonaws.com", "localhost", "0.0.0.0"]
+ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1,.onrender.com').split(',')
 
 # Application definition
 
@@ -89,11 +90,11 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'hustle',
-        'USER': 'ryancheney',
-        'PASSWORD': '&bIi&Z!Rf&T5##*A',
-        'HOST': 'hustle-db.cz22oqoiw6f1.us-east-1.rds.amazonaws.com',
-        'PORT': '5432',
+        'NAME': os.environ.get('DB_NAME', 'hustle'),
+        'USER': os.environ.get('DB_USER', 'ryancheney'),
+        'PASSWORD': os.environ.get('DB_PASSWORD', '&bIi&Z!Rf&T5##*A'),
+        'HOST': os.environ.get('DB_HOST', 'hustle-db.cz22oqoiw6f1.us-east-1.rds.amazonaws.com'),
+        'PORT': os.environ.get('DB_PORT', '5432'),
     }
 }
 
@@ -132,18 +133,21 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+STATIC_URL = '/static/'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Add CORS settings
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://ec2-52-86-62-188.compute-1.amazonaws.com:5173",
-    "https://data5570-mycode.onrender.com"  # Your Vite frontend URL
-]
+# CORS_ALLOWED_ORIGINS = [
+#     "http://localhost:5173",
+#     "http://ec2-52-86-62-188.compute-1.amazonaws.com:5173",
+#     "https://data5570-mycode.onrender.com"  # Your Vite frontend URL
+# ]
+
+CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:5173,https://data5570-mycode.onrender.com').split(',')
 
 
 REST_FRAMEWORK = {

@@ -7,3 +7,5 @@ PyJWT==2.10.1
 sqlparse==0.5.3
 timedelta==2020.12.3
 typing_extensions==4.12.2
+gunicorn==21.2.0
+psycopg2-binary==2.9.9
