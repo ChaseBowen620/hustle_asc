@@ -6,7 +6,8 @@ const useAuth = create((set) => ({
   user: JSON.parse(localStorage.getItem('user')),
   
   isAdmin: (user) => {
-    return user?.groups?.includes('Admin')
+    // Check if user is in Admin group OR if their student profile has is_admin=True
+    return user?.groups?.includes('Admin') || user?.student_profile?.is_admin === true
   },
   
   login: async (username, password) => {

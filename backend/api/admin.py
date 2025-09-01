@@ -3,8 +3,10 @@ from .models import Student, Event, Attendance, Semester, Professor, Class, Teac
 
 @admin.register(Student)
 class StudentAdmin(admin.ModelAdmin):
-    list_display = ('id', 'first_name', 'last_name', 'email', 'total_points', 'created_at')
+    list_display = ('id', 'first_name', 'last_name', 'email', 'is_admin', 'total_points', 'created_at')
+    list_filter = ('is_admin', 'created_at')
     search_fields = ('id', 'first_name', 'last_name', 'email', 'user__username')
+    list_editable = ('is_admin',)
 
 @admin.register(Event)
 class EventAdmin(admin.ModelAdmin):
