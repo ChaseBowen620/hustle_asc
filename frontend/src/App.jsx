@@ -24,11 +24,6 @@ function App() {
   const { user, isAdmin } = useAuth()
   const userIsAdmin = isAdmin(user)
 
-  // Redirect if logged in
-  if (user && window.location.pathname === '/') {
-    return <Navigate to={userIsAdmin ? "/admin/dashboard" : "/dashboard"} replace />
-  }
-
   return (
     <Router>
       <div>
@@ -36,7 +31,16 @@ function App() {
         <Routes>
           <Route element={<Layout />}>
             {/* Public routes */}
-            <Route path="/" element={<LandingPage />} />
+            <Route 
+              path="/" 
+              element={
+                user ? (
+                  <Navigate to={userIsAdmin ? "/admin/dashboard" : "/dashboard"} replace />
+                ) : (
+                  <LandingPage />
+                )
+              } 
+            />
             <Route path="/about" element={<AboutPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />

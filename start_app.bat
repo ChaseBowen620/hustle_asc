@@ -6,9 +6,13 @@ REM Set the project directory
 set PROJECT_DIR=%~dp0
 cd /d "%PROJECT_DIR%"
 
+REM Activate virtual environment
+echo Activating virtual environment...
+call .venv\Scripts\activate.bat
+
 REM Start Django Backend Server
 echo Starting Django Backend Server...
-start "Django Backend" cmd /k "cd /d "%PROJECT_DIR%backend" && py manage.py runserver"
+start "Django Backend" cmd /k "cd /d "%PROJECT_DIR%backend" && call "%PROJECT_DIR%.venv\Scripts\activate.bat" && python manage.py runserver"
 
 REM Wait a moment for backend to start
 timeout /t 3 /nobreak > nul
