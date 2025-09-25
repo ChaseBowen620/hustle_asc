@@ -28,7 +28,7 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-qe#(77o5-q0*6ftwbxo-o
 DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
 # ALLOWED_HOSTS = ["ec2-52-86-62-188.compute-1.amazonaws.com", "localhost", "0.0.0.0"]
-ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1,.onrender.com,testserver').split(',')
+ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1,.onrender.com,testserver,52.8.4.183,0.0.0.0').split(',')
 
 # Application definition
 
@@ -137,7 +137,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 #     "https://data5570-mycode.onrender.com"  # Your Vite frontend URL
 # ]
 
-CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:5173,https://data5570-mycode.onrender.com').split(',')
+CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:5173,https://data5570-mycode.onrender.com,http://52.8.4.183:5173,http://52.8.4.183').split(',')
 
 
 REST_FRAMEWORK = {
@@ -150,3 +150,6 @@ SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
 }
+
+# Webhook Security
+WEBHOOK_SECRET = os.environ.get('WEBHOOK_SECRET', 'your-webhook-secret-key-change-this-in-production')
