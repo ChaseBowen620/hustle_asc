@@ -1,0 +1,16 @@
+[Unit]
+Description=Hustle Django App
+After=network.target
+
+[Service]
+User=ubuntu
+Group=www-data
+WorkingDirectory=/home/ubuntu/hustle_asc/backend
+Environment="PATH=/home/ubuntu/hustle_asc/venv/bin"
+ExecStart=/home/ubuntu/hustle_asc/venv/bin/gunicorn --config gunicorn_config.py backend.wsgi:application
+ExecReload=/bin/kill -s HUP $MAINPID
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+
