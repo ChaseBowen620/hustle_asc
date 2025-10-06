@@ -15,6 +15,9 @@ from .views import (
     student_points,
     attendance_overview
 )
+from .webhook_views import attendance_webhook, webhook_status, secure_attendance_webhook
+from .onetap_webhook_views import onetap_webhook, onetap_webhook_status
+from .unified_webhook_views import unified_webhook, unified_webhook_status
 
 router = DefaultRouter()
 router.register(r'students', StudentViewSet)
@@ -33,4 +36,17 @@ urlpatterns = [
     path('students/participating/', participating_students, name='participating-students'),
     path('students/points/', student_points, name='student-points'),
     path('attendance/overview/', attendance_overview, name='attendance-overview'),
+    
+    # Webhook endpoints
+    path('webhook/attendance/', attendance_webhook, name='attendance-webhook'),
+    path('webhook/attendance/secure/', secure_attendance_webhook, name='secure-attendance-webhook'),
+    path('webhook/status/', webhook_status, name='webhook-status'),
+    
+    # OneTap webhook endpoints
+    path('webhook/onetap/', onetap_webhook, name='onetap-webhook'),
+    path('webhook/onetap/status/', onetap_webhook_status, name='onetap-webhook-status'),
+    
+    # Unified webhook endpoints
+    path('webhook/unified/', unified_webhook, name='unified-webhook'),
+    path('webhook/unified/status/', unified_webhook_status, name='unified-webhook-status'),
 ]

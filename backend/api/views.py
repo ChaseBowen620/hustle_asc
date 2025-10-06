@@ -209,7 +209,12 @@ def get_user_details(request):
         'groups': list(user.groups.values_list('name', flat=True)),
         'is_staff': user.is_staff,
         'is_superuser': user.is_superuser,
-        'student_id': student.id if student else None
+        'student_id': student.id if student else None,
+        'student_profile': {
+            'id': student.id,
+            'is_admin': student.is_admin,
+            'total_points': student.total_points
+        } if student else None
     })
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
@@ -227,6 +232,11 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         
         if hasattr(self.user, 'student_profile'):
             data['student_id'] = self.user.student_profile.id
+            data['student_profile'] = {
+                'id': self.user.student_profile.id,
+                'is_admin': self.user.student_profile.is_admin,
+                'total_points': self.user.student_profile.total_points
+            }
         
         return data
 
