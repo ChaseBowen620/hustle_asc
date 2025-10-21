@@ -31,7 +31,8 @@ function AdminDashboardPage() {
   const [filter, setFilter] = useState("semester")
   const [attendanceData, setAttendanceData] = useState([])
   const [eventTypes, setEventTypes] = useState({})
-  const [selectedEventType, setSelectedEventType] = useState()
+  const [uniqueEventTypes, setUniqueEventTypes] = useState([])
+  const [selectedEventType, setSelectedEventType] = useState([])
   const [currentPage, setCurrentPage] = useState(1)
   const studentsPerPage = 10
 
@@ -43,12 +44,82 @@ function AdminDashboardPage() {
 
   const fetchStudentData = async () => {
     try {
-      const studentData = await axios.get(`${API_URL}/api/students`)
+      const [studentData, attendanceData, eventData] = await Promise.all([
+        axios.get(`${API_URL}/api/students`),
+        axios.get(`${API_URL}/api/attendance`),
+        axios.get(`${API_URL}/api/events`)
+      ])
       
-      // Sort students by points (descending) and then alphabetically
-      const sortedStudents = studentData.data.sort((a, b) => {
-        // First compare by points (descending)
-        const pointsDiff = (b.total_points || 0) - (a.total_points || 0)
+      // Create event date map
+      const eventDateMap = eventData.data.reduce((acc, event) => {
+        acc[event.id] = new Date(event.date)
+        return acc
+      }, {})
+      
+      // Calculate date range based on filter
+      const now = new Date()
+      let startDate = null
+      
+      if (filter === "year") {
+        // Academic year: Fall semester starts in August
+        const currentMonth = now.getMonth()
+        const currentYear = now.getFullYear()
+        
+        if (currentMonth >= 7) { // Aug-Dec (Fall semester)
+          // Current academic year started in August of current year
+          startDate = new Date(currentYear, 7, 1) // August 1st of current year
+        } else { // Jan-July (Spring semester)
+          // Current academic year started in August of previous year
+          startDate = new Date(currentYear - 1, 7, 1) // August 1st of previous year
+        }
+      } else if (filter === "semester") {
+        // Assuming fall semester starts in August, spring in January
+        const currentMonth = now.getMonth()
+        if (currentMonth >= 0 && currentMonth <= 4) { // Jan-May (Spring)
+          startDate = new Date(now.getFullYear(), 0, 1)
+        } else { // Aug-Dec (Fall)
+          startDate = new Date(now.getFullYear(), 7, 1) // August 1st
+        }
+      }
+      
+      // Calculate filtered points for each student
+      const studentsWithFilteredPoints = studentData.data.map(student => {
+        let filteredPoints = 0
+        
+        if (filter === "all") {
+          filteredPoints = student.total_points || 0
+        } else {
+          // Calculate points based on attendance within the date range
+          const studentAttendance = attendanceData.data.filter(attendance => 
+            attendance.student.id === student.id
+          )
+          
+          filteredPoints = studentAttendance.reduce((total, attendance) => {
+            const eventDate = eventDateMap[attendance.event]
+            if (!eventDate) return total
+            
+            // If no date filter, include all points
+            if (!startDate) return total + (eventData.data.find(e => e.id === attendance.event)?.points || 0)
+            
+            // If event date is within the filter range, add points
+            if (eventDate >= startDate && eventDate <= now) {
+              return total + (eventData.data.find(e => e.id === attendance.event)?.points || 0)
+            }
+            
+            return total
+          }, 0)
+        }
+        
+        return {
+          ...student,
+          filtered_points: filteredPoints
+        }
+      })
+      
+      // Sort students by filtered points (descending) and then alphabetically
+      const sortedStudents = studentsWithFilteredPoints.sort((a, b) => {
+        // First compare by filtered points (descending)
+        const pointsDiff = b.filtered_points - a.filtered_points
         
         // If points are equal, sort alphabetically by last name, then first name
         if (pointsDiff === 0) {
@@ -65,8 +136,8 @@ function AdminDashboardPage() {
       setTotalStudents(sortedStudents.length)
       setStudents(sortedStudents)
       
-      // Calculate participating students (students with points > 0)
-      const participating = sortedStudents.filter(student => (student.total_points || 0) > 0)
+      // Calculate participating students (students with filtered points > 0)
+      const participating = sortedStudents.filter(student => student.filtered_points > 0)
       setParticipatingStudents(participating.length)
     } catch (error) {
       console.error('Error fetching student data:', error)
@@ -75,18 +146,28 @@ function AdminDashboardPage() {
 
   const fetchEventData = async () => {
     try {
-      const response = await axios.get(`${API_URL}/api/events`)
+      const [eventsResponse, eventTypesResponse] = await Promise.all([
+        axios.get(`${API_URL}/api/events`),
+        axios.get(`${API_URL}/api/events/types`)
+      ])
+      
       // Create a map of event IDs to their types
-      const eventTypeMap = response.data.reduce((acc, event) => {
+      const eventTypeMap = eventsResponse.data.reduce((acc, event) => {
         acc[event.id] = {
           type_id: event.event_type,
-          type_name: event.event_type_name,
+          type_name: event.event_type,
           date: event.date.split('T')[0],
-          name: event.name
+          name: event.name,
+          organization: event.organization,
+          event_type: event.event_type,
+          function: event.function
         }
         return acc
       }, {})
       setEventTypes(eventTypeMap)
+      
+      // Store unique event types from the new endpoint
+      setUniqueEventTypes(eventTypesResponse.data)
     } catch (error) {
       console.error('Error fetching event data:', error)
     }
@@ -101,12 +182,12 @@ function AdminDashboardPage() {
         const eventInfo = eventTypes[record.event]
         if (!eventInfo) return acc // Skip if no event info
         
-        const date = record.checked_in_at.split('T')[0]
+        const date = eventInfo.date
         const typeId = eventInfo.type_id
         const typeName = eventInfo.type_name
         
         // Check if this event type is selected
-        if (!selectedEventType.includes(typeId.toString())) {
+        if (!selectedEventType || !selectedEventType.includes(typeId.toString())) {
           return acc
         }
         
@@ -139,34 +220,64 @@ function AdminDashboardPage() {
   }
 
   const chartData = {
-    labels: [...new Set(attendanceData.flatMap(data => data.dates))].sort(),
+    labels: [...new Set(attendanceData.flatMap(data => data.dates))]
+      .sort((a, b) => new Date(a) - new Date(b)),
     datasets: attendanceData.map(eventData => {
       const eventTypeId = Object.keys(eventTypes).find(
         key => eventTypes[key].type_name === eventData.event_type
       )
+      
+      // Sort the data points by date
+      const sortedData = eventData.dates
+        .map((date, index) => ({
+          x: new Date(date),
+          y: eventData.attendance_counts[index]
+        }))
+        .sort((a, b) => a.x - b.x)
+      
       return {
         label: eventData.event_type,
-        data: eventData.dates.map((date, index) => ({
-          x: date,
-          y: eventData.attendance_counts[index]
-        })),
+        data: sortedData,
         fill: false,
-        borderColor: EVENT_TYPE_COLORS[eventTypeId] || 'hsl(0, 0%, 50%)'
+        borderColor: EVENT_TYPE_COLORS[eventTypeId] || 'hsl(0, 0%, 50%)',
+        tension: 0,
+        spanGaps: true
       }
     })
   }
 
-  // Get unique event types for the filter - moved outside of render
-  const getUniqueEventTypes = (eventTypes) => {
-    const uniqueTypes = new Map()
-    Object.values(eventTypes).forEach(event => {
-      uniqueTypes.set(event.type_id, {
-        id: event.type_id,
-        name: event.type_name
-      })
-    })
-    return Array.from(uniqueTypes.values())
+  const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    aspectRatio: 2.5,
+    scales: {
+      x: {
+        title: {
+          display: true,
+          text: 'Date'
+        }
+      },
+      y: {
+        beginAtZero: true,
+        title: {
+          display: true,
+          text: 'Attendance Count'
+        }
+      }
+    },
+    plugins: {
+      legend: {
+        display: true,
+        position: 'top'
+      }
+    },
+    elements: {
+      line: {
+        tension: 0
+      }
+    }
   }
+
 
   // Add pagination controls component
   const Pagination = ({ totalStudents, studentsPerPage, currentPage, onPageChange }) => {
@@ -277,7 +388,7 @@ function AdminDashboardPage() {
                     <TableRow key={student.id}>
                       <TableCell>{student.first_name} {student.last_name}</TableCell>
                       <TableCell>{student.email}</TableCell>
-                      <TableCell className="text-right">{student.total_points || 0}</TableCell>
+                      <TableCell className="text-right">{student.filtered_points || 0}</TableCell>
                     </TableRow>
                   ))}
               </TableBody>
@@ -299,20 +410,19 @@ function AdminDashboardPage() {
               <CardDescription>Event attendance over time by event type</CardDescription>
               <div className="flex justify-end space-x-2 mt-4">
                 <Select
-                  value={selectedEventType}
-                  onValueChange={setSelectedEventType}
-                  multiple
+                  value={selectedEventType.length > 0 ? selectedEventType[0] : ""}
+                  onValueChange={(value) => setSelectedEventType([value])}
                 >
                   <SelectTrigger className="w-[280px]">
-                    <SelectValue placeholder="Select an Event" />
+                    <SelectValue placeholder="Select an Event Type" />
                   </SelectTrigger>
                   <SelectContent>
-                    {getUniqueEventTypes(eventTypes).map(type => (
+                    {uniqueEventTypes.map((type, index) => (
                       <SelectItem 
-                        key={`event-type-${type.id}`} 
-                        value={type.id.toString()}
+                        key={`event-type-${index}`} 
+                        value={type}
                       >
-                        {type.name}
+                        {type}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -320,7 +430,9 @@ function AdminDashboardPage() {
               </div>
             </CardHeader>
             <CardContent>
-              <Line data={chartData} />
+              <div style={{ height: '400px' }}>
+                <Line key={`chart-${selectedEventType}`} data={chartData} options={chartOptions} />
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

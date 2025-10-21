@@ -16,7 +16,6 @@ class Student(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     cached_total_points = models.IntegerField(default=0)
     last_points_update = models.DateTimeField(auto_now=True)
-    is_admin = models.BooleanField(default=False, verbose_name="Admin Status")
 
     def __str__(self):
         return f"{self.first_name} {self.last_name}"

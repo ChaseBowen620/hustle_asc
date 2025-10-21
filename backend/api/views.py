@@ -4,7 +4,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from django.utils import timezone
-from .models import Student, Event, Attendance, Semester, Professor, Class, TeachingAssistant, EventType
+from .models import Student, Event, Attendance, Semester, Professor, Class, TeachingAssistant
 from .serializers import (
     StudentSerializer, 
     EventSerializer, 
@@ -16,7 +16,6 @@ from .serializers import (
     ClassCreateSerializer,
     TeachingAssistantCreateSerializer,
     ClassListSerializer,
-    EventTypeSerializer
 )
 from django.contrib.auth.models import User, Group
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -24,6 +23,7 @@ import re
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.db.models import Count, Sum
+from django.db import models
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 import calendar
@@ -53,6 +53,12 @@ class EventViewSet(viewsets.ModelViewSet):
         past_events = Event.objects.filter(date__lte=timezone.now()).order_by('-date')
         serializer = self.get_serializer(past_events, many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def types(self, request):
+        """Get unique event types from all events"""
+        unique_types = Event.objects.values_list('event_type', flat=True).distinct().order_by('event_type')
+        return Response(list(unique_types))
 
 class AttendanceViewSet(viewsets.ModelViewSet):
     queryset = Attendance.objects.select_related('student', 'event').all()
@@ -199,6 +205,7 @@ def register_student(request):
 def get_user_details(request):
     user = request.user
     student = user.student_profile if hasattr(user, 'student_profile') else None
+    admin_profile = user.adminuser if hasattr(user, 'adminuser') else None
     
     return Response({
         'id': user.id,
@@ -212,9 +219,15 @@ def get_user_details(request):
         'student_id': student.id if student else None,
         'student_profile': {
             'id': student.id,
-            'is_admin': student.is_admin,
             'total_points': student.total_points
-        } if student else None
+        } if student else None,
+        'admin_profile': {
+            'id': admin_profile.id,
+            'role': admin_profile.role,
+            'first_name': admin_profile.first_name,
+            'last_name': admin_profile.last_name
+        } if admin_profile else None,
+        'is_admin': admin_profile is not None
     })
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
@@ -234,18 +247,25 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             data['student_id'] = self.user.student_profile.id
             data['student_profile'] = {
                 'id': self.user.student_profile.id,
-                'is_admin': self.user.student_profile.is_admin,
                 'total_points': self.user.student_profile.total_points
             }
+        
+        if hasattr(self.user, 'adminuser'):
+            data['admin_profile'] = {
+                'id': self.user.adminuser.id,
+                'role': self.user.adminuser.role,
+                'first_name': self.user.adminuser.first_name,
+                'last_name': self.user.adminuser.last_name
+            }
+            data['is_admin'] = True
+        else:
+            data['is_admin'] = False
         
         return data
 
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
 
-class EventTypeViewSet(viewsets.ModelViewSet):
-    queryset = EventType.objects.all()
-    serializer_class = EventTypeSerializer
 
 @api_view(['GET'])
 def total_students(request):

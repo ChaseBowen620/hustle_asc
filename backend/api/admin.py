@@ -1,18 +1,18 @@
 from django.contrib import admin
-from .models import Student, Event, Attendance, Semester, Professor, Class, TeachingAssistant, EventType
+from .models import Student, Event, Attendance, Semester, Professor, Class, TeachingAssistant, AdminUser
 
 @admin.register(Student)
 class StudentAdmin(admin.ModelAdmin):
-    list_display = ('id', 'first_name', 'last_name', 'email', 'is_admin', 'total_points', 'created_at')
-    list_filter = ('is_admin', 'created_at')
+    list_display = ('id', 'first_name', 'last_name', 'email', 'total_points', 'created_at')
+    list_filter = ('created_at',)
     search_fields = ('id', 'first_name', 'last_name', 'email', 'user__username')
-    list_editable = ('is_admin',)
 
 @admin.register(Event)
 class EventAdmin(admin.ModelAdmin):
-    list_display = ('id', 'name', 'event_type', 'date', 'location', 'points', 'has_passed')
-    list_filter = ('date', 'event_type')
-    search_fields = ('id', 'name', 'location')
+    list_display = ('id', 'name', 'organization', 'event_type', 'function', 'date', 'location', 'points', 'has_passed')
+    list_filter = ('date', 'organization', 'event_type', 'function')
+    search_fields = ('id', 'name', 'location', 'organization', 'event_type', 'function')
+    list_editable = ('organization', 'event_type', 'function')
 
 @admin.register(Attendance)
 class AttendanceAdmin(admin.ModelAdmin):
@@ -43,8 +43,10 @@ class TeachingAssistantAdmin(admin.ModelAdmin):
     list_filter = ('class_assigned__semester', 'class_assigned__professor')
     search_fields = ('id', 'student__id', 'class_assigned__id')
 
-@admin.register(EventType)
-class EventTypeAdmin(admin.ModelAdmin):
-    list_display = ('id', 'name', 'description', 'created_at')
-    search_fields = ('name', 'description')
+@admin.register(AdminUser)
+class AdminUserAdmin(admin.ModelAdmin):
+    list_display = ('id', 'first_name', 'last_name', 'role', 'user', 'created_at')
+    list_filter = ('role', 'created_at')
+    search_fields = ('id', 'first_name', 'last_name', 'role', 'user__username', 'user__email')
+    list_editable = ('role',)
 

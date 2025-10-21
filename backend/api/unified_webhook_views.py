@@ -10,7 +10,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework import status
 from django.contrib.auth.models import User
-from .models import Student, Event, Attendance, Semester, EventType
+from .models import Student, Event, Attendance, Semester
 import hashlib
 import hmac
 from django.conf import settings
@@ -282,7 +282,9 @@ def create_event(data, source, metadata):
     # Extract required fields
     event_name = data.get('event_name')
     event_date = data.get('event_date')
-    event_type_name = data.get('event_type', 'General')
+    organization = 'ASC'  # Default organization
+    event_type = 'General'  # Default event type
+    function = 'General'  # Default function
     points = data.get('points', 0)
     description = data.get('description', '')
     location = data.get('location', '')
@@ -303,29 +305,13 @@ def create_event(data, source, metadata):
             status=status.HTTP_400_BAD_REQUEST
         )
     
-    # Get or create event type
-    event_type, created = EventType.objects.get_or_create(
-        name=event_type_name,
-        defaults={'description': f'Event type for {event_type_name}'}
-    )
-    
-    # Get current semester (or create a default one)
-    current_semester = Semester.objects.filter(is_current=True).first()
-    if not current_semester:
-        # Create a default semester if none exists
-        current_semester = Semester.objects.create(
-            name="Current Semester",
-            start_date=datetime.now().date(),
-            end_date=datetime.now().date(),
-            is_current=True
-        )
-    
     # Create event
     event = Event.objects.create(
         name=event_name,
         date=event_date,
+        organization=organization,
         event_type=event_type,
-        semester=current_semester,
+        function=function,
         points=points,
         description=description,
         location=location
@@ -340,7 +326,9 @@ def create_event(data, source, metadata):
             'id': event.id,
             'name': event_name,
             'date': event_date.isoformat(),
-            'event_type': event_type_name,
+            'organization': organization,
+            'event_type': event_type,
+            'function': function,
             'points': points,
             'description': description,
             'location': location
@@ -395,12 +383,8 @@ def update_event(data, source, metadata):
                 {'error': 'Invalid event_date format. Use ISO format (e.g., 2024-01-15T10:00:00Z)'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
-    if 'event_type' in data:
-        event_type, created = EventType.objects.get_or_create(
-            name=data['event_type'],
-            defaults={'description': f'Event type for {data["event_type"]}'}
-        )
-        event.event_type = event_type
+    # For webhook updates, we'll keep the existing values unless explicitly provided
+    # (which they won't be based on your clarification)
     if 'points' in data:
         event.points = data['points']
     if 'description' in data:
@@ -419,7 +403,9 @@ def update_event(data, source, metadata):
             'id': event.id,
             'name': event.name,
             'date': event.date.isoformat(),
-            'event_type': event.event_type.name if event.event_type else None,
+            'organization': event.organization,
+            'event_type': event.event_type,
+            'function': event.function,
             'points': event.points,
             'description': event.description,
             'location': event.location
@@ -548,3 +534,5 @@ def unified_webhook_status(request):
             'status': '/api/webhook/unified/status/'
         }
     })
+
+

@@ -6,9 +6,10 @@ import axios from "axios"
 import { API_URL } from '@/config/api'
 
 function CreateEvent({ onCreateEvent, initialData }) {
-  const [eventTypes, setEventTypes] = useState([])
   const [eventData, setEventData] = useState({
+    organization: "",
     event_type: "",
+    function: "",
     name: "",
     description: "",
     location: "",
@@ -19,7 +20,9 @@ function CreateEvent({ onCreateEvent, initialData }) {
   useEffect(() => {
     if (initialData) {
       setEventData({
-        event_type: initialData.event_type,
+        organization: initialData.organization || "",
+        event_type: initialData.event_type || "",
+        function: initialData.function || "",
         name: initialData.name,
         description: initialData.description || "",
         location: initialData.location,
@@ -29,18 +32,6 @@ function CreateEvent({ onCreateEvent, initialData }) {
     }
   }, [initialData])
 
-  useEffect(() => {
-    // Fetch event types when component mounts
-    const fetchEventTypes = async () => {
-      try {
-        const response = await axios.get(`${API_URL}/api/event-types/`)
-        setEventTypes(response.data)
-      } catch (error) {
-        console.error('Error fetching event types:', error)
-      }
-    }
-    fetchEventTypes()
-  }, [])
 
   const handleSubmit = (e) => {
     e.preventDefault()
@@ -50,27 +41,43 @@ function CreateEvent({ onCreateEvent, initialData }) {
       date: new Date(eventData.date).toISOString(),
     })
     if (!initialData) {
-      setEventData({ event_type: "", name: "", description: "", location: "", points: "", date: "" })
+      setEventData({ organization: "", event_type: "", function: "", name: "", description: "", location: "", points: "", date: "" })
     }
   }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="space-y-2">
+        <label className="text-sm font-medium">Organization</label>
+        <Input
+          type="text"
+          value={eventData.organization}
+          onChange={(e) => setEventData({ ...eventData, organization: e.target.value })}
+          placeholder="e.g., ASC, SOC, PyData"
+          required
+        />
+      </div>
+
+      <div className="space-y-2">
         <label className="text-sm font-medium">Event Type</label>
-        <select
+        <Input
+          type="text"
           value={eventData.event_type}
           onChange={(e) => setEventData({ ...eventData, event_type: e.target.value })}
-          className="w-full rounded-md border border-input bg-background px-3 py-2"
+          placeholder="e.g., Innovation Lab, Speaker Event"
           required
-        >
-          <option value="">Select Event Type</option>
-          {eventTypes.map(type => (
-            <option key={type.id} value={type.id}>
-              {type.name}
-            </option>
-          ))}
-        </select>
+        />
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-sm font-medium">Function</label>
+        <Input
+          type="text"
+          value={eventData.function}
+          onChange={(e) => setEventData({ ...eventData, function: e.target.value })}
+          placeholder="e.g., Workshop, Meeting, Competition"
+          required
+        />
       </div>
 
       <div className="space-y-2">

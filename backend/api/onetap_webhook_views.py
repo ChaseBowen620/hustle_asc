@@ -10,7 +10,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework import status
 from django.contrib.auth.models import User
-from .models import Student, Event, Attendance, Semester, EventType
+from .models import Student, Event, Attendance, Semester
 import hashlib
 import hmac
 from django.conf import settings
@@ -178,7 +178,7 @@ def handle_create_event(data, source, metadata):
         # Extract required fields
         event_name = data.get('event_name')
         event_date = data.get('event_date')
-        event_type_name = data.get('event_type', 'General')
+        event_type = data.get('event_type', 'General')
         points = data.get('points', 0)
         description = data.get('description', '')
         
@@ -198,31 +198,20 @@ def handle_create_event(data, source, metadata):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Get or create event type
-        event_type, created = EventType.objects.get_or_create(
-            name=event_type_name,
-            defaults={'description': f'Event type for {event_type_name}'}
-        )
-        
-        # Get current semester (or create a default one)
-        current_semester = Semester.objects.filter(is_current=True).first()
-        if not current_semester:
-            # Create a default semester if none exists
-            current_semester = Semester.objects.create(
-                name="Current Semester",
-                start_date=datetime.now().date(),
-                end_date=datetime.now().date(),
-                is_current=True
-            )
+        # Set default values for new fields
+        organization = 'ASC'  # Default organization
+        function = 'General'  # Default function
         
         # Create event
         event = Event.objects.create(
             name=event_name,
             date=event_date,
+            organization=organization,
             event_type=event_type,
-            semester=current_semester,
+            function=function,
             points=points,
-            description=description
+            description=description,
+            location='ASC Space'  # Default location
         )
         
         logger.info(f"Event created via OneTap: {event} (ID: {event.id})")
@@ -234,7 +223,7 @@ def handle_create_event(data, source, metadata):
                 'id': event.id,
                 'name': event_name,
                 'date': event_date.isoformat(),
-                'event_type': event_type_name,
+                'event_type': event_type,
                 'points': points,
                 'description': description
             },
@@ -355,4 +344,12 @@ def onetap_webhook_status(request):
             'status': '/api/webhook/onetap/status/'
         }
     })
+
+
+
+
+
+
+
+
 

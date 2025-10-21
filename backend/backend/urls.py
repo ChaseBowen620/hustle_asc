@@ -25,14 +25,13 @@ from api.views import (
     ProfessorViewSet,
     ClassViewSet,
     TeachingAssistantViewSet,
-    EventTypeViewSet,
     register_student,
     get_user_details
 )
 from rest_framework_simplejwt.views import (
-    TokenObtainPairView,
     TokenRefreshView,
 )
+from api.views import CustomTokenObtainPairView
 
 router = DefaultRouter()
 router.register(r'students', StudentViewSet)
@@ -42,7 +41,6 @@ router.register(r'semesters', SemesterViewSet)
 router.register(r'professors', ProfessorViewSet)
 router.register(r'classes', ClassViewSet)
 router.register(r'teaching-assistants', TeachingAssistantViewSet)
-router.register(r'event-types', EventTypeViewSet)
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -50,6 +48,6 @@ urlpatterns = [
     path('api/register/', register_student, name='register-student'),
     path('api/user/me/', get_user_details, name='user-details'),
     path('api-auth/', include('rest_framework.urls', namespace='rest_framework')),
-    path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('api/token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 ]

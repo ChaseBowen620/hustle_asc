@@ -81,7 +81,9 @@ function EventsListPage() {
         date: newEvent.date,
         location: newEvent.location,
         points: parseInt(newEvent.points),
-        event_type: newEvent.event_type
+        organization: newEvent.organization,
+        event_type: newEvent.event_type,
+        function: newEvent.function
       })
       setEvents([...events, response.data])
       setShowCreateDialog(false)
@@ -98,7 +100,9 @@ function EventsListPage() {
         date: updatedEvent.date,
         location: updatedEvent.location,
         points: parseInt(updatedEvent.points),
-        event_type: updatedEvent.event_type
+        organization: updatedEvent.organization,
+        event_type: updatedEvent.event_type,
+        function: updatedEvent.function
       })
       setEvents(events.map(event => 
         event.id === editingEvent.id ? response.data : event
@@ -124,15 +128,16 @@ function EventsListPage() {
     // Create CSV content
     const csvContent = [
       `${event.name},${format(new Date(event.date), 'M/d/yy')}`,
-      'First Name,Last Name,Check-in Time',
+      'First Name,Last Name,A-Number',
       ...event.attendees
         .sort((a, b) => 
           `${a.student.last_name} ${a.student.first_name}`
             .localeCompare(`${b.student.last_name} ${b.student.first_name}`)
         )
-        .map(record => 
-          `${record.student.first_name},${record.student.last_name},${format(new Date(record.checked_in_at), 'h:mm a')}`
-        )
+        .map(record => {
+          const aNumber = record.student.a_number || record.student.user || 'N/A'
+          return `${record.student.first_name},${record.student.last_name},${aNumber}`
+        })
     ].join('\n')
 
     // Create filename
@@ -155,7 +160,9 @@ function EventsListPage() {
     .filter(event => 
       event.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       event.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      event.event_type_name.toLowerCase().includes(searchTerm.toLowerCase())
+      event.organization.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      event.event_type.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      event.function.toLowerCase().includes(searchTerm.toLowerCase())
     )
     .filter(event => {
       const eventDate = new Date(event.date)
@@ -175,7 +182,9 @@ function EventsListPage() {
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>Type</TableHead>
+          <TableHead>Organization</TableHead>
+          <TableHead>Event Type</TableHead>
+          <TableHead>Function</TableHead>
           <TableHead>Name</TableHead>
           <TableHead>Date</TableHead>
           <TableHead className="hidden sm:table-cell">Location</TableHead>
@@ -187,7 +196,9 @@ function EventsListPage() {
       <TableBody>
         {events.map((event) => (
           <TableRow key={event.id}>
-            <TableCell className="font-medium">{event.event_type_name}</TableCell>
+            <TableCell className="font-medium">{event.organization}</TableCell>
+            <TableCell>{event.event_type}</TableCell>
+            <TableCell>{event.function}</TableCell>
             <TableCell>{event.name}</TableCell>
             <TableCell>
               <span className="sm:hidden">
@@ -266,7 +277,7 @@ function EventsListPage() {
       <div className="flex items-center space-x-2">
         <Search className="w-5 h-5 text-gray-500" />
         <Input
-          placeholder="Search by name or event type..."
+          placeholder="Search by name, organization, event type, or function..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="max-w-sm"

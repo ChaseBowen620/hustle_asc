@@ -8,16 +8,15 @@ from .views import (
     ProfessorViewSet,
     ClassViewSet,
     TeachingAssistantViewSet,
-    EventTypeViewSet,
     get_user_details,
     total_students,
     participating_students,
     student_points,
     attendance_overview
 )
-from .webhook_views import attendance_webhook, webhook_status, secure_attendance_webhook
-from .onetap_webhook_views import onetap_webhook, onetap_webhook_status
 from .unified_webhook_views import unified_webhook, unified_webhook_status
+from .debug_webhook_views import debug_webhook, debug_webhook_status
+from .onetap_webhook_handler import onetap_webhook_handler, onetap_webhook_status
 
 router = DefaultRouter()
 router.register(r'students', StudentViewSet)
@@ -27,7 +26,6 @@ router.register(r'semesters', SemesterViewSet)
 router.register(r'professors', ProfessorViewSet)
 router.register(r'classes', ClassViewSet)
 router.register(r'teaching-assistants', TeachingAssistantViewSet)
-router.register(r'event-types', EventTypeViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
@@ -37,16 +35,15 @@ urlpatterns = [
     path('students/points/', student_points, name='student-points'),
     path('attendance/overview/', attendance_overview, name='attendance-overview'),
     
-    # Webhook endpoints
-    path('webhook/attendance/', attendance_webhook, name='attendance-webhook'),
-    path('webhook/attendance/secure/', secure_attendance_webhook, name='secure-attendance-webhook'),
-    path('webhook/status/', webhook_status, name='webhook-status'),
-    
-    # OneTap webhook endpoints
-    path('webhook/onetap/', onetap_webhook, name='onetap-webhook'),
-    path('webhook/onetap/status/', onetap_webhook_status, name='onetap-webhook-status'),
-    
-    # Unified webhook endpoints
+    # Unified webhook endpoints (handles students, events, and attendance)
     path('webhook/unified/', unified_webhook, name='unified-webhook'),
     path('webhook/unified/status/', unified_webhook_status, name='unified-webhook-status'),
+    
+    # Debug webhook endpoint (temporary - for diagnosing OneTap issues)
+    path('webhook/debug/', debug_webhook, name='debug-webhook'),
+    path('webhook/debug/status/', debug_webhook_status, name='debug-webhook-status'),
+    
+    # OneTap webhook handler (for actual OneTap integration)
+    path('webhook/onetap-handler/', onetap_webhook_handler, name='onetap-webhook-handler'),
+    path('webhook/onetap-handler/status/', onetap_webhook_status, name='onetap-webhook-handler-status'),
 ]
