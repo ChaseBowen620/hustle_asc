@@ -45,12 +45,34 @@ function Navbar() {
       <nav className="bg-slate-800 text-white md:fixed md:top-0 md:left-0 md:right-0 md:z-50">
         <div className="container mx-auto px-4">
           <div className="flex justify-between h-20 items-center">
-            <div className="flex items-center">
+            <div className="flex items-center space-x-6">
               <img 
                 src="https://avatars.githubusercontent.com/u/94191472?s=280&v=4"
                 alt="Logo"
                 className="h-16 w-16 brightness-0 invert"
               />
+              <Link
+                to="/student-dashboard"
+                className={cn(
+                  "text-sm font-medium transition-colors hover:text-white",
+                  location.pathname === "/student-dashboard"
+                    ? "text-white"
+                    : "text-neutral-400"
+                )}
+              >
+                Home
+              </Link>
+              <Link
+                to="/settings"
+                className={cn(
+                  "text-sm font-medium transition-colors hover:text-white",
+                  location.pathname === "/settings"
+                    ? "text-white"
+                    : "text-neutral-400"
+                )}
+              >
+                Settings
+              </Link>
             </div>
             <Button 
               onClick={handleSignOut}
@@ -72,6 +94,7 @@ function Navbar() {
     { path: "/events", label: "Events List" },
     { path: "/check-in", label: "Check In" },
     { path: "/admin", label: "Admin" },
+    { path: "/settings", label: "Settings" },
   ]
 
   return (

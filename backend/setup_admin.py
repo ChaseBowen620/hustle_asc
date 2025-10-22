@@ -25,11 +25,6 @@ def setup_admin():
             # Add superuser to Admin group
             superuser.groups.add(admin_group)
             print(f"Added superuser '{superuser.username}' to Admin group")
-            
-            # Also make sure they're staff
-            superuser.is_staff = True
-            superuser.save()
-            print(f"Set {superuser.username} as staff member")
         else:
             print("No superuser found")
     except Exception as e:

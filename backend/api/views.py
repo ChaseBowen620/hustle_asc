@@ -42,27 +42,92 @@ class EventViewSet(viewsets.ModelViewSet):
     queryset = Event.objects.all()
     serializer_class = EventSerializer
 
+    def get_queryset(self):
+        """Filter events by organization based on admin role"""
+        queryset = Event.objects.all()
+        
+        # Check if user is admin and filter by organization
+        admin_profile = getattr(self.request.user, 'adminuser', None)
+        if admin_profile and admin_profile.role != 'Super Admin':
+            queryset = queryset.filter(organization=admin_profile.role)
+        
+        return queryset
+
     @action(detail=False, methods=['get'])
     def upcoming(self, request):
-        upcoming_events = Event.objects.filter(date__gt=timezone.now()).order_by('date')
+        upcoming_events = self.get_queryset().filter(date__gt=timezone.now()).order_by('date')
         serializer = self.get_serializer(upcoming_events, many=True)
         return Response(serializer.data)
 
     @action(detail=False, methods=['get'])
     def past(self, request):
-        past_events = Event.objects.filter(date__lte=timezone.now()).order_by('-date')
+        past_events = self.get_queryset().filter(date__lte=timezone.now()).order_by('-date')
         serializer = self.get_serializer(past_events, many=True)
         return Response(serializer.data)
 
     @action(detail=False, methods=['get'])
     def types(self, request):
-        """Get unique event types from all events"""
-        unique_types = Event.objects.values_list('event_type', flat=True).distinct().order_by('event_type')
+        """Get unique event types from filtered events"""
+        unique_types = self.get_queryset().values_list('event_type', flat=True).distinct().order_by('event_type')
         return Response(list(unique_types))
+
+    @action(detail=False, methods=['get'])
+    def organizations(self, request):
+        """Get unique organizations from filtered events"""
+        unique_organizations = self.get_queryset().values_list('organization', flat=True).distinct().order_by('organization')
+        return Response(list(unique_organizations))
+
+    @action(detail=False, methods=['get'])
+    def functions(self, request):
+        """Get unique functions from filtered events"""
+        unique_functions = self.get_queryset().values_list('function', flat=True).distinct().order_by('function')
+        return Response(list(unique_functions))
+
+    @action(detail=False, methods=['get'])
+    def all_functions(self, request):
+        """Get all unique functions from all events (universal)"""
+        unique_functions = Event.objects.values_list('function', flat=True).distinct().order_by('function')
+        return Response(list(unique_functions))
+
+    @action(detail=False, methods=['post'])
+    def create_event_type(self, request):
+        """Create a new event type for the organization"""
+        try:
+            event_type = request.data.get('event_type')
+            if not event_type:
+                return Response({'error': 'Event type is required'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Check if event type already exists for this organization
+            admin_profile = getattr(request.user, 'adminuser', None)
+            if admin_profile and admin_profile.role != 'Super Admin':
+                existing = Event.objects.filter(
+                    organization=admin_profile.role,
+                    event_type=event_type
+                ).exists()
+            else:
+                existing = Event.objects.filter(event_type=event_type).exists()
+            
+            if existing:
+                return Response({'error': 'Event type already exists'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            return Response({'message': 'Event type created successfully', 'event_type': event_type})
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class AttendanceViewSet(viewsets.ModelViewSet):
     queryset = Attendance.objects.select_related('student', 'event').all()
     serializer_class = AttendanceSerializer
+
+    def get_queryset(self):
+        """Filter attendance by organization based on admin role"""
+        queryset = Attendance.objects.select_related('student', 'event').all()
+        
+        # Check if user is admin and filter by organization
+        admin_profile = getattr(self.request.user, 'adminuser', None)
+        if admin_profile and admin_profile.role != 'Super Admin':
+            queryset = queryset.filter(event__organization=admin_profile.role)
+        
+        return queryset
 
     def create(self, request, *args, **kwargs):
         try:
@@ -214,7 +279,6 @@ def get_user_details(request):
         'first_name': user.first_name,
         'last_name': user.last_name,
         'groups': list(user.groups.values_list('name', flat=True)),
-        'is_staff': user.is_staff,
         'is_superuser': user.is_superuser,
         'student_id': student.id if student else None,
         'student_profile': {
@@ -230,6 +294,53 @@ def get_user_details(request):
         'is_admin': admin_profile is not None
     })
 
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def change_password(request):
+    """Change user password"""
+    try:
+        user = request.user
+        current_password = request.data.get('current_password')
+        new_password = request.data.get('new_password')
+        confirm_password = request.data.get('confirm_password')
+        
+        # Validate required fields
+        if not all([current_password, new_password, confirm_password]):
+            return Response({
+                'error': 'All password fields are required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate password confirmation
+        if new_password != confirm_password:
+            return Response({
+                'error': 'New passwords do not match'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate current password
+        if not user.check_password(current_password):
+            return Response({
+                'error': 'Current password is incorrect'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate new password strength
+        if len(new_password) < 8:
+            return Response({
+                'error': 'New password must be at least 8 characters long'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Set new password
+        user.set_password(new_password)
+        user.save()
+        
+        return Response({
+            'message': 'Password changed successfully'
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
         data = super().validate(attrs)
@@ -240,7 +351,6 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         data['first_name'] = self.user.first_name
         data['last_name'] = self.user.last_name
         data['groups'] = list(self.user.groups.values_list('name', flat=True))
-        data['is_staff'] = self.user.is_staff
         data['is_superuser'] = self.user.is_superuser
         
         if hasattr(self.user, 'student_profile'):
@@ -268,24 +378,53 @@ class CustomTokenObtainPairView(TokenObtainPairView):
 
 
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def total_students(request):
-    count = Student.objects.count()
+    # Check if user is admin and filter by organization
+    admin_profile = getattr(request.user, 'adminuser', None)
+    if admin_profile and admin_profile.role != 'Super Admin':
+        # Filter students who attended events from this admin's organization
+        count = Student.objects.filter(
+            attendances__event__organization=admin_profile.role
+        ).distinct().count()
+    else:
+        # Super Admin or non-admin sees all students
+        count = Student.objects.count()
     return Response({'count': count})
 
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def participating_students(request):
     filter_type = request.GET.get('filter', 'semester')
     
+    # Check if user is admin and filter by organization
+    admin_profile = getattr(request.user, 'adminuser', None)
+    
     # Base query
     query = Student.objects
+    
+    # Apply organization filter if admin
+    if admin_profile and admin_profile.role != 'Super Admin':
+        query = query.filter(attendances__event__organization=admin_profile.role)
     
     # Get current date
     now = timezone.now()
     
     if filter_type == 'semester':
-        current_semester = Semester.objects.get(is_current=True)
+        # Filter by current semester date range
+        current_month = now.month
+        current_year = now.year
+        
+        if current_month >= 8:  # Fall semester (Aug-Dec)
+            semester_start = timezone.make_aware(datetime(current_year, 8, 1))
+            semester_end = timezone.make_aware(datetime(current_year + 1, 1, 1))
+        else:  # Spring semester (Jan-July)
+            semester_start = timezone.make_aware(datetime(current_year, 1, 1))
+            semester_end = timezone.make_aware(datetime(current_year, 8, 1))
+        
         count = query.filter(
-            attendances__event__semester=current_semester
+            attendances__event__date__gte=semester_start,
+            attendances__event__date__lt=semester_end
         ).distinct().count()
     
     elif filter_type == 'year':
@@ -303,22 +442,42 @@ def participating_students(request):
     return Response({'count': count})
 
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def student_points(request):
     filter_type = request.GET.get('filter', 'semester')
     
+    # Check if user is admin and filter by organization
+    admin_profile = getattr(request.user, 'adminuser', None)
+    
     # Base query
     students = Student.objects.all()
+    
+    # Apply organization filter if admin
+    if admin_profile and admin_profile.role != 'Super Admin':
+        students = students.filter(attendances__event__organization=admin_profile.role)
     
     # Get current date
     now = timezone.now()
     
     if filter_type == 'semester':
-        # Filter by current semester
-        current_semester = Semester.objects.get(is_current=True)
+        # Filter by current semester date range
+        current_month = now.month
+        current_year = now.year
+        
+        if current_month >= 8:  # Fall semester (Aug-Dec)
+            semester_start = timezone.make_aware(datetime(current_year, 8, 1))
+            semester_end = timezone.make_aware(datetime(current_year + 1, 1, 1))
+        else:  # Spring semester (Jan-July)
+            semester_start = timezone.make_aware(datetime(current_year, 1, 1))
+            semester_end = timezone.make_aware(datetime(current_year, 8, 1))
+        
         students = students.annotate(
-            total_points=Sum(
+            filtered_points=Sum(
                 'attendances__event__points',
-                filter=models.Q(attendances__event__semester=current_semester)
+                filter=models.Q(
+                    attendances__event__date__gte=semester_start,
+                    attendances__event__date__lt=semester_end
+                )
             )
         )
     
@@ -330,7 +489,7 @@ def student_points(request):
         )
         
         students = students.annotate(
-            total_points=Sum(
+            filtered_points=Sum(
                 'attendances__event__points',
                 filter=models.Q(attendances__event__date__gte=academic_year_start)
             )
@@ -338,27 +497,38 @@ def student_points(request):
     
     else:  # 'all'
         students = students.annotate(
-            total_points=Sum('attendances__event__points')
+            filtered_points=Sum('attendances__event__points')
         )
 
     # Order by points (handling NULL values)
-    students = students.order_by(models.F('total_points').desc(nulls_last=True))
+    students = students.order_by(models.F('filtered_points').desc(nulls_last=True))
     
     data = [{
-        'id': student.id,
+        'student_id': student.id,
         'first_name': student.first_name,
         'last_name': student.last_name,
         'email': student.email,
-        'total_points': student.total_points or 0
+        'total_points': student.filtered_points or 0
     } for student in students]
     
     return Response(data)
 
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def attendance_overview(request):
-    attendance_data = Attendance.objects.annotate(
+    # Check if user is admin and filter by organization
+    admin_profile = getattr(request.user, 'adminuser', None)
+    
+    # Base query
+    attendance_query = Attendance.objects.all()
+    
+    # Apply organization filter if admin
+    if admin_profile and admin_profile.role != 'Super Admin':
+        attendance_query = attendance_query.filter(event__organization=admin_profile.role)
+    
+    attendance_data = attendance_query.annotate(
         date=models.functions.TruncMonth('checked_in_at')
-    ).values('date', 'event__event_type__name').annotate(
+    ).values('date', 'event__event_type').annotate(
         count=Count('id')
     ).order_by('date')
 
@@ -367,7 +537,7 @@ def attendance_overview(request):
     for entry in attendance_data:
         transformed_data.append({
             'date': entry['date'],
-            'event_type': entry['event__event_type__name'],
+            'event_type': entry['event__event_type'],
             'attendance_counts': entry['count']
         })
 

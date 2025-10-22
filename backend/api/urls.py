@@ -9,6 +9,7 @@ from .views import (
     ClassViewSet,
     TeachingAssistantViewSet,
     get_user_details,
+    change_password,
     total_students,
     participating_students,
     student_points,
@@ -28,12 +29,14 @@ router.register(r'classes', ClassViewSet)
 router.register(r'teaching-assistants', TeachingAssistantViewSet)
 
 urlpatterns = [
-    path('', include(router.urls)),
-    path('user/me/', get_user_details, name='user-details'),
+    # Custom endpoints must come before router to avoid conflicts
     path('students/total/', total_students, name='total-students'),
     path('students/participating/', participating_students, name='participating-students'),
     path('students/points/', student_points, name='student-points'),
     path('attendance/overview/', attendance_overview, name='attendance-overview'),
+    path('user/me/', get_user_details, name='user-details'),
+    path('user/change-password/', change_password, name='change-password'),
+    path('', include(router.urls)),
     
     # Unified webhook endpoints (handles students, events, and attendance)
     path('webhook/unified/', unified_webhook, name='unified-webhook'),

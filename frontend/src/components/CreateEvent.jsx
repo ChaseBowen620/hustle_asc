@@ -2,8 +2,16 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import axios from "axios"
 import { API_URL } from '@/config/api'
+import { useAuth } from "@/hooks/useAuth"
 
 function CreateEvent({ onCreateEvent, initialData }) {
   const [eventData, setEventData] = useState({
@@ -16,6 +24,14 @@ function CreateEvent({ onCreateEvent, initialData }) {
     points: "",
     date: "",
   })
+  const [organizations, setOrganizations] = useState([])
+  const [functions, setFunctions] = useState([])
+  const [eventTypes, setEventTypes] = useState([])
+  const { user } = useAuth()
+
+  useEffect(() => {
+    fetchDropdownData()
+  }, [])
 
   useEffect(() => {
     if (initialData) {
@@ -31,6 +47,27 @@ function CreateEvent({ onCreateEvent, initialData }) {
       })
     }
   }, [initialData])
+
+  const fetchDropdownData = async () => {
+    try {
+      const authHeaders = {
+        headers: {
+          'Authorization': `Bearer ${user?.token}`
+        }
+      }
+      
+      const [organizationsRes, functionsRes, eventTypesRes] = await Promise.all([
+        axios.get(`${API_URL}/api/events/organizations`, authHeaders),
+        axios.get(`${API_URL}/api/events/all_functions`, authHeaders), // Use universal functions
+        axios.get(`${API_URL}/api/events/types`, authHeaders)
+      ])
+      setOrganizations(organizationsRes.data)
+      setFunctions(functionsRes.data)
+      setEventTypes(eventTypesRes.data)
+    } catch (error) {
+      console.error('Error fetching dropdown data:', error)
+    }
+  }
 
 
   const handleSubmit = (e) => {
@@ -49,35 +86,59 @@ function CreateEvent({ onCreateEvent, initialData }) {
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="space-y-2">
         <label className="text-sm font-medium">Organization</label>
-        <Input
-          type="text"
+        <Select
           value={eventData.organization}
-          onChange={(e) => setEventData({ ...eventData, organization: e.target.value })}
-          placeholder="e.g., ASC, SOC, PyData"
-          required
-        />
+          onValueChange={(value) => setEventData({ ...eventData, organization: value })}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Select an organization" />
+          </SelectTrigger>
+          <SelectContent>
+            {organizations.map((org, index) => (
+              <SelectItem key={`org-${index}`} value={org}>
+                {org}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="space-y-2">
         <label className="text-sm font-medium">Event Type</label>
-        <Input
-          type="text"
+        <Select
           value={eventData.event_type}
-          onChange={(e) => setEventData({ ...eventData, event_type: e.target.value })}
-          placeholder="e.g., Innovation Lab, Speaker Event"
-          required
-        />
+          onValueChange={(value) => setEventData({ ...eventData, event_type: value })}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Select an event type" />
+          </SelectTrigger>
+          <SelectContent>
+            {eventTypes.map((type, index) => (
+              <SelectItem key={`type-${index}`} value={type}>
+                {type}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="space-y-2">
         <label className="text-sm font-medium">Function</label>
-        <Input
-          type="text"
+        <Select
           value={eventData.function}
-          onChange={(e) => setEventData({ ...eventData, function: e.target.value })}
-          placeholder="e.g., Workshop, Meeting, Competition"
-          required
-        />
+          onValueChange={(value) => setEventData({ ...eventData, function: value })}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Select a function" />
+          </SelectTrigger>
+          <SelectContent>
+            {functions.map((func, index) => (
+              <SelectItem key={`func-${index}`} value={func}>
+                {func}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="space-y-2">

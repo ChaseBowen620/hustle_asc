@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react"
 import axios from "axios"
+import { useAuth } from "@/hooks/useAuth"
 import { Line } from 'react-chartjs-2'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -35,6 +36,7 @@ function AdminDashboardPage() {
   const [selectedEventType, setSelectedEventType] = useState([])
   const [currentPage, setCurrentPage] = useState(1)
   const studentsPerPage = 10
+  const { user } = useAuth()
 
   useEffect(() => {
     fetchStudentData()
@@ -44,10 +46,19 @@ function AdminDashboardPage() {
 
   const fetchStudentData = async () => {
     try {
-      const [studentData, attendanceData, eventData] = await Promise.all([
-        axios.get(`${API_URL}/api/students`),
-        axios.get(`${API_URL}/api/attendance`),
-        axios.get(`${API_URL}/api/events`)
+      const authHeaders = {
+        headers: {
+          'Authorization': `Bearer ${user?.token}`
+        }
+      }
+      
+      const [studentData, attendanceData, eventData, totalStudentsRes, participatingStudentsRes, studentPointsRes] = await Promise.all([
+        axios.get(`${API_URL}/api/students`, authHeaders),
+        axios.get(`${API_URL}/api/attendance`, authHeaders),
+        axios.get(`${API_URL}/api/events`, authHeaders),
+        axios.get(`${API_URL}/api/students/total/`, authHeaders),
+        axios.get(`${API_URL}/api/students/participating/?filter=${filter}`, authHeaders),
+        axios.get(`${API_URL}/api/students/points/?filter=${filter}`, authHeaders)
       ])
       
       // Create event date map
@@ -82,33 +93,11 @@ function AdminDashboardPage() {
         }
       }
       
-      // Calculate filtered points for each student
+      // Use backend API data for filtered points (already organization-filtered)
       const studentsWithFilteredPoints = studentData.data.map(student => {
-        let filteredPoints = 0
-        
-        if (filter === "all") {
-          filteredPoints = student.total_points || 0
-        } else {
-          // Calculate points based on attendance within the date range
-          const studentAttendance = attendanceData.data.filter(attendance => 
-            attendance.student.id === student.id
-          )
-          
-          filteredPoints = studentAttendance.reduce((total, attendance) => {
-            const eventDate = eventDateMap[attendance.event]
-            if (!eventDate) return total
-            
-            // If no date filter, include all points
-            if (!startDate) return total + (eventData.data.find(e => e.id === attendance.event)?.points || 0)
-            
-            // If event date is within the filter range, add points
-            if (eventDate >= startDate && eventDate <= now) {
-              return total + (eventData.data.find(e => e.id === attendance.event)?.points || 0)
-            }
-            
-            return total
-          }, 0)
-        }
+        // Find the student's points from the backend API response
+        const studentPointsData = studentPointsRes.data.find(sp => sp.student_id === student.id)
+        const filteredPoints = studentPointsData ? studentPointsData.total_points : 0
         
         return {
           ...student,
@@ -133,12 +122,10 @@ function AdminDashboardPage() {
         return pointsDiff
       })
       
-      setTotalStudents(sortedStudents.length)
+      // Use API responses for totals (already filtered by organization)
+      setTotalStudents(totalStudentsRes.data.count)
+      setParticipatingStudents(participatingStudentsRes.data.count)
       setStudents(sortedStudents)
-      
-      // Calculate participating students (students with filtered points > 0)
-      const participating = sortedStudents.filter(student => student.filtered_points > 0)
-      setParticipatingStudents(participating.length)
     } catch (error) {
       console.error('Error fetching student data:', error)
     }
@@ -146,9 +133,15 @@ function AdminDashboardPage() {
 
   const fetchEventData = async () => {
     try {
+      const authHeaders = {
+        headers: {
+          'Authorization': `Bearer ${user?.token}`
+        }
+      }
+      
       const [eventsResponse, eventTypesResponse] = await Promise.all([
-        axios.get(`${API_URL}/api/events`),
-        axios.get(`${API_URL}/api/events/types`)
+        axios.get(`${API_URL}/api/events`, authHeaders),
+        axios.get(`${API_URL}/api/events/types`, authHeaders)
       ])
       
       // Create a map of event IDs to their types
@@ -175,7 +168,13 @@ function AdminDashboardPage() {
 
   const fetchAttendanceData = async () => {
     try {
-      const response = await axios.get(`${API_URL}/api/attendance`)
+      const authHeaders = {
+        headers: {
+          'Authorization': `Bearer ${user?.token}`
+        }
+      }
+      
+      const response = await axios.get(`${API_URL}/api/attendance`, authHeaders)
       
       // Group attendance by event type and date
       const groupedData = response.data.reduce((acc, record) => {
@@ -187,7 +186,7 @@ function AdminDashboardPage() {
         const typeName = eventInfo.type_name
         
         // Check if this event type is selected
-        if (!selectedEventType || !selectedEventType.includes(typeId.toString())) {
+        if (selectedEventType && selectedEventType.length > 0 && !selectedEventType.includes(typeName)) {
           return acc
         }
         
@@ -222,11 +221,7 @@ function AdminDashboardPage() {
   const chartData = {
     labels: [...new Set(attendanceData.flatMap(data => data.dates))]
       .sort((a, b) => new Date(a) - new Date(b)),
-    datasets: attendanceData.map(eventData => {
-      const eventTypeId = Object.keys(eventTypes).find(
-        key => eventTypes[key].type_name === eventData.event_type
-      )
-      
+    datasets: attendanceData.map((eventData, index) => {
       // Sort the data points by date
       const sortedData = eventData.dates
         .map((date, index) => ({
@@ -236,10 +231,10 @@ function AdminDashboardPage() {
         .sort((a, b) => a.x - b.x)
       
       return {
-        label: eventData.event_type,
+        label: eventData.event_type || 'Unknown Event Type',
         data: sortedData,
         fill: false,
-        borderColor: EVENT_TYPE_COLORS[eventTypeId] || 'hsl(0, 0%, 50%)',
+        borderColor: EVENT_TYPE_COLORS[index] || `hsl(${index * 60}, 70%, 50%)`,
         tension: 0,
         spanGaps: true
       }

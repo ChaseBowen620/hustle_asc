@@ -14,6 +14,7 @@ import { Toaster } from "./components/ui/toaster"
 import { useAuth } from "@/hooks/useAuth"
 import StudentDashboard from "./pages/StudentDashboard"
 import AdminDashboardPage from "./pages/AdminDashboardPage"
+import SettingsPage from "./pages/SettingsPage"
 
 function PrivateRoute({ children }) {
   const { user } = useAuth()
@@ -51,6 +52,16 @@ function App() {
               element={
                 <PrivateRoute>
                   <StudentDashboard />
+                </PrivateRoute>
+              }
+            />
+
+            {/* Settings route - available to all authenticated users */}
+            <Route
+              path="/settings"
+              element={
+                <PrivateRoute>
+                  <SettingsPage />
                 </PrivateRoute>
               }
             />

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react"
 import axios from "axios"
+import { useAuth } from "@/hooks/useAuth"
 import { format } from "date-fns"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -20,6 +21,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -43,6 +45,7 @@ function EventsListPage() {
   const [selectedEvent, setSelectedEvent] = useState(null)
   const [showAttendees, setShowAttendees] = useState(false)
   const [activeTab, setActiveTab] = useState("upcoming")
+  const { user } = useAuth()
 
   useEffect(() => {
     fetchEvents()
@@ -50,9 +53,15 @@ function EventsListPage() {
 
   const fetchEvents = async () => {
     try {
+      const authHeaders = {
+        headers: {
+          'Authorization': `Bearer ${user?.token}`
+        }
+      }
+      
       const [eventsRes, attendanceRes] = await Promise.all([
-        axios.get(`${API_URL}/api/events/`),
-        axios.get(`${API_URL}/api/attendance/`)
+        axios.get(`${API_URL}/api/events/`, authHeaders),
+        axios.get(`${API_URL}/api/attendance/`, authHeaders)
       ])
 
       // Group attendance by event
@@ -84,6 +93,10 @@ function EventsListPage() {
         organization: newEvent.organization,
         event_type: newEvent.event_type,
         function: newEvent.function
+      }, {
+        headers: {
+          'Authorization': `Bearer ${user?.token}`
+        }
       })
       setEvents([...events, response.data])
       setShowCreateDialog(false)
@@ -103,6 +116,10 @@ function EventsListPage() {
         organization: updatedEvent.organization,
         event_type: updatedEvent.event_type,
         function: updatedEvent.function
+      }, {
+        headers: {
+          'Authorization': `Bearer ${user?.token}`
+        }
       })
       setEvents(events.map(event => 
         event.id === editingEvent.id ? response.data : event
@@ -116,7 +133,11 @@ function EventsListPage() {
   const handleDeleteEvent = async (eventId) => {
     if (window.confirm('Are you sure you want to delete this event?')) {
       try {
-        await axios.delete(`${API_URL}/api/events/${eventId}/`)
+        await axios.delete(`${API_URL}/api/events/${eventId}/`, {
+          headers: {
+            'Authorization': `Bearer ${user?.token}`
+          }
+        })
         setEvents(events.filter(event => event.id !== eventId))
       } catch (error) {
         console.error('Error deleting event:', error)
@@ -265,9 +286,12 @@ function EventsListPage() {
           <DialogTrigger asChild>
             <Button>Create Event</Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Create New Event</DialogTitle>
+              <DialogDescription>
+                Fill out the form below to create a new event for students to attend.
+              </DialogDescription>
             </DialogHeader>
             <CreateEvent onCreateEvent={handleCreateEvent} />
           </DialogContent>
@@ -305,9 +329,12 @@ function EventsListPage() {
 
       {/* Edit Event Dialog */}
       <Dialog open={!!editingEvent} onOpenChange={() => setEditingEvent(null)}>
-        <DialogContent>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Event</DialogTitle>
+            <DialogDescription>
+              Update the event details below.
+            </DialogDescription>
           </DialogHeader>
           <CreateEvent 
             onCreateEvent={handleEditEvent}
@@ -323,6 +350,9 @@ function EventsListPage() {
             <DialogTitle>
               {selectedEvent?.name} - Attendance Details
             </DialogTitle>
+            <DialogDescription>
+              View and manage attendance for this event.
+            </DialogDescription>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto">
             <Table>
