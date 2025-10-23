@@ -147,7 +147,7 @@ function CheckInPage() {
     .filter(event =>
       event.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       event.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      event.event_type.toLowerCase().includes(searchTerm.toLowerCase())
+      event.event_type_name.toLowerCase().includes(searchTerm.toLowerCase())
     )
     .sort((a, b) => new Date(a.date) - new Date(b.date))
 
@@ -186,7 +186,7 @@ function CheckInPage() {
                       onClick={() => handleEventSelect(event)}
                       className="cursor-pointer hover:bg-slate-100 active:bg-slate-200 transition-colors group"
                     >
-                      <TableCell className="font-medium group-hover:text-slate-900">{event.event_type}</TableCell>
+                      <TableCell className="font-medium group-hover:text-slate-900">{event.event_type_name}</TableCell>
                       <TableCell className="group-hover:text-slate-900">{event.name}</TableCell>
                       <TableCell className="group-hover:text-slate-900">
                         {format(new Date(event.date), 'h:mm a')}

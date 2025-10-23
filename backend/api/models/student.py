@@ -13,6 +13,7 @@ class Student(models.Model):
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
     email = models.EmailField(unique=True)
+    username = models.CharField(max_length=150, blank=True, help_text="Username from the user account")
     created_at = models.DateTimeField(auto_now_add=True)
     cached_total_points = models.IntegerField(default=0)
     last_points_update = models.DateTimeField(auto_now=True)
@@ -48,5 +49,6 @@ def create_student_profile(sender, instance, created, **kwargs):
             user=instance,
             first_name=instance.first_name,
             last_name=instance.last_name,
-            email=instance.email
+            email=instance.email,
+            username=instance.username
         )
