@@ -46,3 +46,4 @@ class Command(BaseCommand):
             self.style.SUCCESS(f'Successfully updated {updated_count} user passwords to "{password}"')
         )
 
+

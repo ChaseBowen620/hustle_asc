@@ -103,3 +103,4 @@ class Command(BaseCommand):
             self.stdout.write(
                 self.style.ERROR(f'Error creating faculty admin user: {e}')
             )
+

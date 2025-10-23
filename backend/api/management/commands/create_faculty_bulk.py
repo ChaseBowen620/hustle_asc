@@ -157,3 +157,4 @@ class Command(BaseCommand):
                     f'Summary: {created_count} created, {skipped_count} skipped, {error_count} errors'
                 )
             )
+

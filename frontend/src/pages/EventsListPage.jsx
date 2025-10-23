@@ -156,7 +156,7 @@ function EventsListPage() {
             .localeCompare(`${b.student.last_name} ${b.student.first_name}`)
         )
         .map(record => {
-          const aNumber = record.student.a_number || record.student.user || 'N/A'
+          const aNumber = record.student.user?.username || 'N/A'
           return `${record.student.first_name},${record.student.last_name},${aNumber}`
         })
     ].join('\n')
