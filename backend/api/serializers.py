@@ -23,7 +23,7 @@ class EventSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Event
-        fields = ['id', 'name', 'organization', 'event_type', 'function', 'description', 'date', 'location', 'points', 'has_passed']
+        fields = ['id', 'name', 'organization', 'event_type', 'description', 'date', 'location', 'has_passed']
 
 class AttendanceSerializer(serializers.ModelSerializer):
     student = StudentSerializer(read_only=True)

@@ -176,7 +176,6 @@ function CheckInPage() {
                     <TableHead>Name</TableHead>
                     <TableHead>Date</TableHead>
                     <TableHead>Location</TableHead>
-                    <TableHead>Points</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -192,7 +191,6 @@ function CheckInPage() {
                         {format(new Date(event.date), 'h:mm a')}
                       </TableCell>
                       <TableCell className="group-hover:text-slate-900">{event.location}</TableCell>
-                      <TableCell className="group-hover:text-slate-900">{event.points}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

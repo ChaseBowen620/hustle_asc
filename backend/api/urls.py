@@ -15,7 +15,6 @@ from .views import (
     student_points,
     attendance_overview
 )
-from .unified_webhook_views import unified_webhook, unified_webhook_status
 from .debug_webhook_views import debug_webhook, debug_webhook_status
 from .onetap_webhook_handler import onetap_webhook_handler, onetap_webhook_status
 
@@ -37,10 +36,6 @@ urlpatterns = [
     path('user/me/', get_user_details, name='user-details'),
     path('user/change-password/', change_password, name='change-password'),
     path('', include(router.urls)),
-    
-    # Unified webhook endpoints (handles students, events, and attendance)
-    path('webhook/unified/', unified_webhook, name='unified-webhook'),
-    path('webhook/unified/status/', unified_webhook_status, name='unified-webhook-status'),
     
     # Debug webhook endpoint (temporary - for diagnosing OneTap issues)
     path('webhook/debug/', debug_webhook, name='debug-webhook'),

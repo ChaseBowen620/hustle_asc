@@ -89,10 +89,8 @@ function EventsListPage() {
         description: newEvent.description || "",
         date: newEvent.date,
         location: newEvent.location,
-        points: parseInt(newEvent.points),
         organization: newEvent.organization,
         event_type: newEvent.event_type,
-        function: newEvent.function
       }, {
         headers: {
           'Authorization': `Bearer ${user?.token}`
@@ -112,10 +110,8 @@ function EventsListPage() {
         description: updatedEvent.description || "",
         date: updatedEvent.date,
         location: updatedEvent.location,
-        points: parseInt(updatedEvent.points),
         organization: updatedEvent.organization,
         event_type: updatedEvent.event_type,
-        function: updatedEvent.function
       }, {
         headers: {
           'Authorization': `Bearer ${user?.token}`
@@ -182,8 +178,7 @@ function EventsListPage() {
       event.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       event.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
       event.organization.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      event.event_type.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      event.function.toLowerCase().includes(searchTerm.toLowerCase())
+      event.event_type.toLowerCase().includes(searchTerm.toLowerCase())
     )
     .filter(event => {
       const eventDate = new Date(event.date)
@@ -205,11 +200,9 @@ function EventsListPage() {
         <TableRow>
           <TableHead>Organization</TableHead>
           <TableHead>Event Type</TableHead>
-          <TableHead>Function</TableHead>
           <TableHead>Name</TableHead>
           <TableHead>Date</TableHead>
           <TableHead className="hidden sm:table-cell">Location</TableHead>
-          <TableHead className="hidden sm:table-cell">Points</TableHead>
           {showAttendance && <TableHead>Attendance</TableHead>}
           <TableHead className="w-[70px]"></TableHead>
         </TableRow>
@@ -219,7 +212,6 @@ function EventsListPage() {
           <TableRow key={event.id}>
             <TableCell className="font-medium">{event.organization}</TableCell>
             <TableCell>{event.event_type}</TableCell>
-            <TableCell>{event.function}</TableCell>
             <TableCell>{event.name}</TableCell>
             <TableCell>
               <span className="sm:hidden">
@@ -230,7 +222,6 @@ function EventsListPage() {
               </span>
             </TableCell>
             <TableCell className="hidden sm:table-cell">{event.location}</TableCell>
-            <TableCell className="hidden sm:table-cell">{event.points}</TableCell>
             {showAttendance && (
               <TableCell>
                 <Button 
@@ -301,7 +292,7 @@ function EventsListPage() {
       <div className="flex items-center space-x-2">
         <Search className="w-5 h-5 text-gray-500" />
         <Input
-          placeholder="Search by name, organization, event type, or function..."
+          placeholder="Search by name, organization, or event type..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="max-w-sm"

@@ -17,16 +17,15 @@ function CreateEvent({ onCreateEvent, initialData }) {
   const [eventData, setEventData] = useState({
     organization: "",
     event_type: "",
-    function: "",
     name: "",
     description: "",
     location: "",
-    points: "",
     date: "",
   })
   const [organizations, setOrganizations] = useState([])
-  const [functions, setFunctions] = useState([])
   const [eventTypes, setEventTypes] = useState([])
+  const [isCustomEventType, setIsCustomEventType] = useState(false)
+  const [customEventType, setCustomEventType] = useState("")
   const { user } = useAuth()
 
   useEffect(() => {
@@ -34,19 +33,27 @@ function CreateEvent({ onCreateEvent, initialData }) {
   }, [])
 
   useEffect(() => {
-    if (initialData) {
+    if (initialData && organizations.length > 0 && eventTypes.length > 0) {
+      console.log('Populating form with initial data:', initialData)
+      
+      // Check if the event type is a custom one (not in the predefined list)
+      const isCustomType = initialData.event_type && !eventTypes.includes(initialData.event_type)
+      
       setEventData({
         organization: initialData.organization || "",
         event_type: initialData.event_type || "",
-        function: initialData.function || "",
         name: initialData.name,
         description: initialData.description || "",
         location: initialData.location,
-        points: initialData.points.toString(),
         date: new Date(initialData.date).toISOString().slice(0, 16), // Format for datetime-local input
       })
+      
+      if (isCustomType) {
+        setIsCustomEventType(true)
+        setCustomEventType(initialData.event_type)
+      }
     }
-  }, [initialData])
+  }, [initialData, organizations, eventTypes])
 
   const fetchDropdownData = async () => {
     try {
@@ -56,13 +63,11 @@ function CreateEvent({ onCreateEvent, initialData }) {
         }
       }
       
-      const [organizationsRes, functionsRes, eventTypesRes] = await Promise.all([
+      const [organizationsRes, eventTypesRes] = await Promise.all([
         axios.get(`${API_URL}/api/events/organizations`, authHeaders),
-        axios.get(`${API_URL}/api/events/all_functions`, authHeaders), // Use universal functions
         axios.get(`${API_URL}/api/events/types`, authHeaders)
       ])
       setOrganizations(organizationsRes.data)
-      setFunctions(functionsRes.data)
       setEventTypes(eventTypesRes.data)
     } catch (error) {
       console.error('Error fetching dropdown data:', error)
@@ -70,15 +75,32 @@ function CreateEvent({ onCreateEvent, initialData }) {
   }
 
 
+  const handleEventTypeChange = (value) => {
+    if (value === "custom") {
+      setIsCustomEventType(true)
+      setEventData({ ...eventData, event_type: "" })
+    } else {
+      setIsCustomEventType(false)
+      setCustomEventType("")
+      setEventData({ ...eventData, event_type: value })
+    }
+  }
+
+  const handleCustomEventTypeChange = (value) => {
+    setCustomEventType(value)
+    setEventData({ ...eventData, event_type: value })
+  }
+
   const handleSubmit = (e) => {
     e.preventDefault()
     onCreateEvent({
       ...eventData,
-      points: parseInt(eventData.points),
       date: new Date(eventData.date).toISOString(),
     })
     if (!initialData) {
-      setEventData({ organization: "", event_type: "", function: "", name: "", description: "", location: "", points: "", date: "" })
+      setEventData({ organization: "", event_type: "", name: "", description: "", location: "", date: "" })
+      setIsCustomEventType(false)
+      setCustomEventType("")
     }
   }
 
@@ -105,41 +127,51 @@ function CreateEvent({ onCreateEvent, initialData }) {
 
       <div className="space-y-2">
         <label className="text-sm font-medium">Event Type</label>
-        <Select
-          value={eventData.event_type}
-          onValueChange={(value) => setEventData({ ...eventData, event_type: value })}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Select an event type" />
-          </SelectTrigger>
-          <SelectContent>
-            {eventTypes.map((type, index) => (
-              <SelectItem key={`type-${index}`} value={type}>
-                {type}
+        {!isCustomEventType ? (
+          <Select
+            value={eventData.event_type}
+            onValueChange={handleEventTypeChange}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Select an event type" />
+            </SelectTrigger>
+            <SelectContent>
+              {eventTypes.map((type, index) => (
+                <SelectItem key={`type-${index}`} value={type}>
+                  {type}
+                </SelectItem>
+              ))}
+              <SelectItem value="custom" className="text-blue-600 font-medium">
+                + Other (Custom)
               </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+            </SelectContent>
+          </Select>
+        ) : (
+          <div className="space-y-2">
+            <Input
+              type="text"
+              value={customEventType}
+              onChange={(e) => handleCustomEventTypeChange(e.target.value)}
+              placeholder="Enter custom event type"
+              required
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setIsCustomEventType(false)
+                setCustomEventType("")
+                setEventData({ ...eventData, event_type: "" })
+              }}
+              className="text-sm"
+            >
+              ← Back to dropdown
+            </Button>
+          </div>
+        )}
       </div>
 
-      <div className="space-y-2">
-        <label className="text-sm font-medium">Function</label>
-        <Select
-          value={eventData.function}
-          onValueChange={(value) => setEventData({ ...eventData, function: value })}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Select a function" />
-          </SelectTrigger>
-          <SelectContent>
-            {functions.map((func, index) => (
-              <SelectItem key={`func-${index}`} value={func}>
-                {func}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
 
       <div className="space-y-2">
         <label className="text-sm font-medium">Event Name</label>
@@ -169,15 +201,6 @@ function CreateEvent({ onCreateEvent, initialData }) {
         />
       </div>
 
-      <div className="space-y-2">
-        <label className="text-sm font-medium">Points</label>
-        <Input
-          type="number"
-          value={eventData.points}
-          onChange={(e) => setEventData({ ...eventData, points: e.target.value })}
-          required
-        />
-      </div>
 
       <div className="space-y-2">
         <label className="text-sm font-medium">Date and Time</label>

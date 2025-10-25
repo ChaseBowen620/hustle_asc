@@ -153,7 +153,6 @@ function AdminDashboardPage() {
           name: event.name,
           organization: event.organization,
           event_type: event.event_type,
-          function: event.function
         }
         return acc
       }, {})

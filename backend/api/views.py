@@ -77,17 +77,6 @@ class EventViewSet(viewsets.ModelViewSet):
         unique_organizations = self.get_queryset().values_list('organization', flat=True).distinct().order_by('organization')
         return Response(list(unique_organizations))
 
-    @action(detail=False, methods=['get'])
-    def functions(self, request):
-        """Get unique functions from filtered events"""
-        unique_functions = self.get_queryset().values_list('function', flat=True).distinct().order_by('function')
-        return Response(list(unique_functions))
-
-    @action(detail=False, methods=['get'])
-    def all_functions(self, request):
-        """Get all unique functions from all events (universal)"""
-        unique_functions = Event.objects.values_list('function', flat=True).distinct().order_by('function')
-        return Response(list(unique_functions))
 
     @action(detail=False, methods=['post'])
     def create_event_type(self, request):
@@ -472,8 +461,8 @@ def student_points(request):
             semester_end = timezone.make_aware(datetime(current_year, 8, 1))
         
         students = students.annotate(
-            filtered_points=Sum(
-                'attendances__event__points',
+            filtered_attendance_count=Count(
+                'attendances',
                 filter=models.Q(
                     attendances__event__date__gte=semester_start,
                     attendances__event__date__lt=semester_end
@@ -489,26 +478,26 @@ def student_points(request):
         )
         
         students = students.annotate(
-            filtered_points=Sum(
-                'attendances__event__points',
+            filtered_attendance_count=Count(
+                'attendances',
                 filter=models.Q(attendances__event__date__gte=academic_year_start)
             )
         )
     
     else:  # 'all'
         students = students.annotate(
-            filtered_points=Sum('attendances__event__points')
+            filtered_attendance_count=Count('attendances')
         )
 
-    # Order by points (handling NULL values)
-    students = students.order_by(models.F('filtered_points').desc(nulls_last=True))
+    # Order by attendance count (handling NULL values)
+    students = students.order_by(models.F('filtered_attendance_count').desc(nulls_last=True))
     
     data = [{
         'student_id': student.id,
         'first_name': student.first_name,
         'last_name': student.last_name,
         'email': student.email,
-        'total_points': student.filtered_points or 0
+        'total_points': student.filtered_attendance_count or 0
     } for student in students]
     
     return Response(data)

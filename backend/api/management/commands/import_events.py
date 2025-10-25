@@ -3,7 +3,7 @@ import os
 from datetime import datetime
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
-from api.models import Event, EventType
+from api.models import Event
 
 
 class Command(BaseCommand):
@@ -57,22 +57,9 @@ class Command(BaseCommand):
                         continue
                     
                     # Get event type (handle BOM in column name)
-                    event_type_id = row.get('\ufeffevent_type_id', row.get('event_type_id', '')).strip()
-                    if not event_type_id:
-                        self.stdout.write(
-                            self.style.WARNING(f'Row {row_num}: Empty event_type_id, skipping')
-                        )
-                        error_count += 1
-                        continue
-                    
-                    try:
-                        event_type = EventType.objects.get(id=int(event_type_id))
-                    except (ValueError, EventType.DoesNotExist):
-                        self.stdout.write(
-                            self.style.ERROR(f'Row {row_num}: Invalid event_type_id "{event_type_id}"')
-                        )
-                        error_count += 1
-                        continue
+                    event_type = row.get('\ufeffevent_type', row.get('event_type', 'General')).strip()
+                    if not event_type:
+                        event_type = 'General'  # Default value
                     
                     # Get other fields
                     name = row.get('name', '').strip()
@@ -86,23 +73,13 @@ class Command(BaseCommand):
                     description = row.get('description', '').strip() if row.get('description') else ''
                     location = row.get('location', '').strip() if row.get('location') else 'TBD'  # Default location
                     
-                    # Parse points
-                    try:
-                        points = int(row.get('points', '1')) if row.get('points', '').strip() else 1
-                    except ValueError:
-                        self.stdout.write(
-                            self.style.WARNING(f'Row {row_num}: Invalid points "{row.get("points", "")}", using default 1')
-                        )
-                        points = 1
-                    
                     # Create the event
                     event = Event.objects.create(
                         event_type=event_type,
                         name=name,
                         description=description,
                         date=event_date,
-                        location=location,
-                        points=points
+                        location=location
                     )
                     
                     imported_count += 1

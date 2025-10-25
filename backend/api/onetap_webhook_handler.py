@@ -291,10 +291,46 @@ def create_or_find_event(event_name, event_date, event_description):
     except Event.DoesNotExist:
         pass
     
-    # Create new event with default values
+    # Create new event
+    
+    # Get unique organizations and event types from database
+    existing_organizations = list(Event.objects.values_list('organization', flat=True).distinct())
+    existing_event_types = list(Event.objects.values_list('event_type', flat=True).distinct())
+    
+    logger.info(f"Available organizations: {existing_organizations}")
+    logger.info(f"Available event types: {existing_event_types}")
+    logger.info(f"Processing event name: '{event_name}'")
+    
+    # Extract organization from event name (case-sensitive)
     organization = 'ASC'  # Default organization
-    event_type = 'General'  # Default event type
-    function = 'General'  # Default function
+    
+    for org in existing_organizations:
+        if org and org in event_name:  # Case-sensitive match
+            organization = org
+            logger.info(f"Matched organization: {org}")
+            break
+    
+    # Check if event name contains any of the existing event types
+    event_name_lower = event_name.lower()
+    event_type = 'General'  # Default value
+    
+    for existing_type in existing_event_types:
+        if existing_type and existing_type.lower() in event_name_lower:
+            event_type = existing_type
+            logger.info(f"Matched event type: {existing_type}")
+            break
+    
+    logger.info(f"Final organization: {organization}, event_type: {event_type}")
+    
+    # Get current semester (or create a default one)
+    current_semester = Semester.objects.filter(is_current=True).first()
+    if not current_semester:
+        current_semester = Semester.objects.create(
+            name="Current Semester",
+            start_date=datetime.now().date(),
+            end_date=datetime.now().date(),
+            is_current=True
+        )
     
     # Create event
     event = Event.objects.create(
@@ -302,8 +338,6 @@ def create_or_find_event(event_name, event_date, event_description):
         date=event_date,
         organization=organization,
         event_type=event_type,
-        function=function,
-        points=1,  # Default to 1 point
         description=event_description,
         location='ASC Space'  # Default location
     )

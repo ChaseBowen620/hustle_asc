@@ -28,5 +28,5 @@ class Attendance(models.Model):
         return f"{self.student} at {self.event}"
 
 @receiver(post_save, sender=Attendance)
-def update_student_points(sender, instance, **kwargs):
-    instance.student.update_points_cache()
+def update_student_attendance(sender, instance, **kwargs):
+    instance.student.update_attendance_cache()

@@ -12,15 +12,10 @@ class Event(models.Model):
         max_length=100,
         help_text="Type of the event"
     )
-    function = models.CharField(
-        max_length=100,
-        help_text="Function/purpose of the event"
-    )
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     date = models.DateTimeField()
     location = models.CharField(max_length=200)
-    points = models.PositiveIntegerField()
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

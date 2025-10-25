@@ -75,9 +75,6 @@ function Calendar({ events, onCreateEvent }) {
                       {format(new Date(event.date), 'h:mm a')}
                     </p>
                     <p className="text-sm text-neutral-500">{event.location}</p>
-                    <p className="text-sm font-medium mt-1">
-                      {event.points} {event.points === 1 ? 'point' : 'points'}
-                    </p>
                   </div>
                 ))
               ) : (

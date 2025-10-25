@@ -9,10 +9,10 @@ class StudentAdmin(admin.ModelAdmin):
 
 @admin.register(Event)
 class EventAdmin(admin.ModelAdmin):
-    list_display = ('id', 'name', 'organization', 'event_type', 'function', 'date', 'location', 'points', 'has_passed')
-    list_filter = ('date', 'organization', 'event_type', 'function')
-    search_fields = ('id', 'name', 'location', 'organization', 'event_type', 'function')
-    list_editable = ('organization', 'event_type', 'function')
+    list_display = ('id', 'name', 'organization', 'event_type', 'date', 'location', 'has_passed')
+    list_filter = ('date', 'organization', 'event_type')
+    search_fields = ('id', 'name', 'location', 'organization', 'event_type')
+    list_editable = ('organization', 'event_type')
 
 @admin.register(Attendance)
 class AttendanceAdmin(admin.ModelAdmin):

@@ -47,10 +47,8 @@ function StudentDashboard() {
           axios.get(`${API_URL}/api/events/upcoming/`, authHeaders)
         ])
         
-        const userAttendance = attendanceRes.data.find(
-          record => record.student.user === user.id
-        )
-        setTotalPoints(userAttendance?.student.total_points || 0)
+        // Get total points from user data (already available from login)
+        setTotalPoints(user?.student_profile?.total_points || 0)
         
         // Filter upcoming events (events in the future)
         const now = new Date()
@@ -162,14 +160,6 @@ function StudentDashboard() {
                 <div>
                   <h4 className="font-semibold text-sm text-gray-600">Event Type</h4>
                   <p className="text-sm">{selectedEvent.event_type}</p>
-                </div>
-                <div>
-                  <h4 className="font-semibold text-sm text-gray-600">Function</h4>
-                  <p className="text-sm">{selectedEvent.function}</p>
-                </div>
-                <div>
-                  <h4 className="font-semibold text-sm text-gray-600">Points</h4>
-                  <p className="text-sm">{selectedEvent.points}</p>
                 </div>
                 <div>
                   <h4 className="font-semibold text-sm text-gray-600">Date & Time</h4>

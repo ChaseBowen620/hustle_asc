@@ -15,30 +15,26 @@ class Student(models.Model):
     email = models.EmailField(unique=True)
     username = models.CharField(max_length=150, blank=True, help_text="Username from the user account")
     created_at = models.DateTimeField(auto_now_add=True)
-    cached_total_points = models.IntegerField(default=0)
-    last_points_update = models.DateTimeField(auto_now=True)
+    cached_attendance_count = models.IntegerField(default=0)
+    last_attendance_update = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"{self.first_name} {self.last_name}"
     
-    def update_points_cache(self):
-        self.cached_total_points = sum(
-            attendance.event.points 
-            for attendance in self.attendances.all()
-        )
-        self.save(update_fields=['cached_total_points', 'last_points_update'])
+    def update_attendance_cache(self):
+        self.cached_attendance_count = self.attendances.count()
+        self.save(update_fields=['cached_attendance_count', 'last_attendance_update'])
 
     @property
     def total_points(self):
-        return self.cached_total_points
+        return self.cached_attendance_count
 
     def get_attendance_by_event_type(self):
         return (
             self.attendances.all()
-            .values('event__event_type__name')
+            .values('event__event_type')
             .annotate(
-                count=models.Count('id'),
-                total_points=models.Sum('event__points')
+                count=models.Count('id')
             )
         )
 
