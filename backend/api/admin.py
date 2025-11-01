@@ -1,4 +1,6 @@
 from django.contrib import admin
+from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.contrib.auth.models import User
 from .models import Student, Event, Attendance, Semester, Professor, Class, TeachingAssistant, AdminUser
 
 @admin.register(Student)
@@ -49,4 +51,28 @@ class AdminUserAdmin(admin.ModelAdmin):
     list_filter = ('role', 'created_at')
     search_fields = ('id', 'first_name', 'last_name', 'role', 'user__username', 'user__email')
     list_editable = ('role',)
+
+# Custom User Admin to show email field prominently
+class UserAdmin(BaseUserAdmin):
+    # Fields to show in the add form
+    add_fieldsets = (
+        (None, {
+            'classes': ('wide',),
+            'fields': ('first_name', 'last_name', 'email', 'password1', 'password2'),
+        }),
+    )
+    
+    # Fields to show in the change form
+    fieldsets = (
+        (None, {'fields': ('username', 'password')}),
+        ('Personal info', {'fields': ('first_name', 'last_name', 'email')}),
+        ('Permissions', {
+            'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions'),
+        }),
+        ('Important dates', {'fields': ('last_login', 'date_joined')}),
+    )
+
+# Unregister the default User admin and register our custom one
+admin.site.unregister(User)
+admin.site.register(User, UserAdmin)
 

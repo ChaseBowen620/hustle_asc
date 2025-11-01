@@ -41,10 +41,18 @@ class Student(models.Model):
 @receiver(post_save, sender=User)
 def create_student_profile(sender, instance, created, **kwargs):
     if created and not hasattr(instance, 'student'):
+        # Extract username from email if email is provided
+        if instance.email and '@usu.edu' in instance.email:
+            # Extract student ID from email (e.g., a02484125@usu.edu -> a02484125)
+            username = instance.email.split('@')[0]
+            # Update the user's username to match the student ID
+            instance.username = username
+            instance.save(update_fields=['username'])
+        
         Student.objects.create(
             user=instance,
-            first_name=instance.first_name,
-            last_name=instance.last_name,
+            first_name=instance.first_name or '',
+            last_name=instance.last_name or '',
             email=instance.email,
             username=instance.username
         )

@@ -77,6 +77,17 @@ class EventViewSet(viewsets.ModelViewSet):
         unique_organizations = self.get_queryset().values_list('organization', flat=True).distinct().order_by('organization')
         return Response(list(unique_organizations))
 
+    @action(detail=False, methods=['get'])
+    def functions(self, request):
+        """Get unique functions from filtered events"""
+        unique_functions = self.get_queryset().values_list('function', flat=True).distinct().order_by('function')
+        return Response(list(unique_functions))
+
+    @action(detail=False, methods=['get'])
+    def all_functions(self, request):
+        """Get all unique functions from all events (universal)"""
+        unique_functions = Event.objects.values_list('function', flat=True).distinct().order_by('function')
+        return Response(list(unique_functions))
 
     @action(detail=False, methods=['post'])
     def create_event_type(self, request):
@@ -102,6 +113,66 @@ class EventViewSet(viewsets.ModelViewSet):
             return Response({'message': 'Event type created successfully', 'event_type': event_type})
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def create(self, request, *args, **kwargs):
+        """Override create to handle recurring events"""
+        try:
+            # Create the main event
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            event = serializer.save()
+            
+            # If this is a recurring event, create recurring instances
+            if event.is_recurring and event.recurrence_type != 'none':
+                self._create_recurring_instances(event)
+            
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    def _create_recurring_instances(self, parent_event):
+        """Create recurring instances of an event"""
+        from datetime import timedelta
+        import calendar
+        
+        current_date = parent_event.date
+        end_date = parent_event.recurrence_end_date or (current_date + timedelta(days=365))  # Default to 1 year
+        
+        while current_date <= end_date:
+            # Calculate next occurrence based on recurrence type
+            if parent_event.recurrence_type == 'daily':
+                current_date += timedelta(days=1)
+            elif parent_event.recurrence_type == 'weekly':
+                current_date += timedelta(weeks=1)
+            elif parent_event.recurrence_type == 'biweekly':
+                current_date += timedelta(weeks=2)
+            elif parent_event.recurrence_type == 'monthly':
+                # Add one month
+                if current_date.month == 12:
+                    current_date = current_date.replace(year=current_date.year + 1, month=1)
+                else:
+                    try:
+                        current_date = current_date.replace(month=current_date.month + 1)
+                    except ValueError:
+                        # Handle cases where the day doesn't exist in the next month
+                        current_date = current_date.replace(month=current_date.month + 1, day=1)
+                        current_date = current_date.replace(day=min(parent_event.date.day, calendar.monthrange(current_date.year, current_date.month)[1]))
+            else:
+                break
+            
+            if current_date <= end_date:
+                # Create recurring instance
+                Event.objects.create(
+                    name=parent_event.name,
+                    organization=parent_event.organization,
+                    event_type=parent_event.event_type,
+                    description=parent_event.description,
+                    date=current_date,
+                    location=parent_event.location,
+                    is_recurring=False,  # Instances are not recurring themselves
+                    recurrence_type='none',
+                    parent_event=parent_event
+                )
 
 class AttendanceViewSet(viewsets.ModelViewSet):
     queryset = Attendance.objects.select_related('student', 'event').all()
@@ -461,8 +532,8 @@ def student_points(request):
             semester_end = timezone.make_aware(datetime(current_year, 8, 1))
         
         students = students.annotate(
-            filtered_attendance_count=Count(
-                'attendances',
+            filtered_points=Sum(
+                'attendances__event__points',
                 filter=models.Q(
                     attendances__event__date__gte=semester_start,
                     attendances__event__date__lt=semester_end
@@ -478,26 +549,26 @@ def student_points(request):
         )
         
         students = students.annotate(
-            filtered_attendance_count=Count(
-                'attendances',
+            filtered_points=Sum(
+                'attendances__event__points',
                 filter=models.Q(attendances__event__date__gte=academic_year_start)
             )
         )
     
     else:  # 'all'
         students = students.annotate(
-            filtered_attendance_count=Count('attendances')
+            filtered_points=Sum('attendances__event__points')
         )
 
-    # Order by attendance count (handling NULL values)
-    students = students.order_by(models.F('filtered_attendance_count').desc(nulls_last=True))
+    # Order by points (handling NULL values)
+    students = students.order_by(models.F('filtered_points').desc(nulls_last=True))
     
     data = [{
         'student_id': student.id,
         'first_name': student.first_name,
         'last_name': student.last_name,
         'email': student.email,
-        'total_points': student.filtered_attendance_count or 0
+        'total_points': student.filtered_points or 0
     } for student in students]
     
     return Response(data)

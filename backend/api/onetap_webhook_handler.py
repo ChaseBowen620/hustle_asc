@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.decorators import api_view, permission_classes
@@ -12,6 +13,22 @@ from datetime import datetime
 import re
 
 logger = logging.getLogger(__name__)
+
+# Dedicated debug logger for OneTap webhook requests → writes to log.txt in this directory
+debug_logger = logging.getLogger('onetap_debug')
+try:
+    _debug_log_path = os.path.join(os.path.dirname(__file__), 'log.txt')
+    # Avoid adding duplicate handlers on autoreload
+    if not any(isinstance(h, logging.FileHandler) and getattr(h, 'baseFilename', None) == _debug_log_path for h in debug_logger.handlers):
+        _fh = logging.FileHandler(_debug_log_path)
+        _fh.setLevel(logging.INFO)
+        _fh.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
+        debug_logger.addHandler(_fh)
+        debug_logger.setLevel(logging.INFO)
+        debug_logger.propagate = False
+except Exception:
+    # If file handler cannot be created, fall back silently; main logger will still capture
+    pass
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -58,12 +75,17 @@ def onetap_webhook_handler(request):
         # Log the incoming request
         logger.info(f"OneTap webhook received: {request.method} {request.path}")
         logger.info(f"Headers: {dict(request.headers)}")
+        try:
+            debug_logger.info(f"REQUEST {request.method} {request.path} Headers={dict(request.headers)} Body={request.body.decode('utf-8', errors='replace')}")
+        except Exception as _e:
+            debug_logger.error(f"REQUEST log failure: {str(_e)}")
         
         # Parse JSON payload
         try:
             payload = json.loads(request.body)
         except json.JSONDecodeError as e:
             logger.error(f"Invalid JSON payload: {e}")
+            debug_logger.error(f"Invalid JSON payload: {str(e)} Body={request.body.decode('utf-8', errors='replace')}")
             return Response(
                 {'error': 'Invalid JSON payload'}, 
                 status=status.HTTP_400_BAD_REQUEST
@@ -87,12 +109,14 @@ def onetap_webhook_handler(request):
         
         # Validate required fields
         if not profile_data.get('email'):
+            debug_logger.error("Rejected request: missing profile email")
             return Response(
                 {'error': 'Profile email is required'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
         
         if not list_data.get('name'):
+            debug_logger.error("Rejected request: missing event name in list data")
             return Response(
                 {'error': 'Event name is required'}, 
                 status=status.HTTP_400_BAD_REQUEST
@@ -100,11 +124,19 @@ def onetap_webhook_handler(request):
         
         # Process the check-in
         result = process_onetap_checkin(participant_data, profile_data, list_data)
+        try:
+            debug_logger.info(f"SUCCESS student={result.get('data',{}).get('student')} event={result.get('data',{}).get('event')} attendance={result.get('data',{}).get('attendance')}")
+        except Exception as _e:
+            debug_logger.error(f"SUCCESS log failure: {str(_e)}")
         
         return Response(result, status=status.HTTP_201_CREATED)
         
     except Exception as e:
         logger.error(f"OneTap webhook error: {str(e)}", exc_info=True)
+        try:
+            debug_logger.error(f"ERROR {str(e)}", exc_info=True)
+        except Exception:
+            pass
         return Response(
             {'error': 'Internal server error', 'details': str(e)}, 
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -202,11 +234,63 @@ def process_onetap_checkin(participant_data, profile_data, list_data):
 def create_or_find_student(first_name, last_name, email, a_number, phone):
     """Create or find a student based on OneTap profile data."""
     
+    # Helper function to ensure student has a user
+    def ensure_student_has_user(student, email_handle):
+        """Ensure a student has a corresponding user. Create one if missing."""
+        # Check if user exists by checking user_id or trying to access user
+        user_exists = True
+        try:
+            # Check if user_id is None or if accessing user raises an exception
+            if hasattr(student, 'user_id') and student.user_id is None:
+                user_exists = False
+            else:
+                # Try to access the user to see if it exists
+                _ = student.user  # This will raise User.DoesNotExist if missing
+        except User.DoesNotExist:
+            user_exists = False
+        except AttributeError:
+            # Fallback: check user_id directly
+            user_exists = getattr(student, 'user_id', None) is not None
+        
+        if not user_exists:
+            # Student exists but has no user - create one
+            username = email_handle.lower()
+            
+            # Ensure username is unique
+            original_username = username
+            counter = 1
+            while User.objects.filter(username=username).exists():
+                username = f"{original_username}_{counter}"
+                counter += 1
+            
+            # Create user account with password "changeme!"
+            user = User.objects.create_user(
+                username=username,
+                email=student.email,
+                password='changeme!',
+                first_name=student.first_name,
+                last_name=student.last_name,
+                is_active=True
+            )
+            
+            # Update student to link to the new user
+            student.user = user
+            student.save()
+            
+            logger.info(f"Created missing user for student {student.first_name} {student.last_name}: username={username}")
+            return student
+        return student
+    
+    # Get username from email handle (part before @)
+    email_handle = email.split('@')[0] if '@' in email else email
+    
     # Try to find existing student by email first
     student = None
     try:
         student = Student.objects.get(email=email)
         logger.info(f"Found existing student by email: {student.first_name} {student.last_name}")
+        # Ensure student has a user
+        student = ensure_student_has_user(student, email_handle)
         return student
     except Student.DoesNotExist:
         pass
@@ -216,6 +300,8 @@ def create_or_find_student(first_name, last_name, email, a_number, phone):
         try:
             student = Student.objects.get(user__username=a_number.lower())
             logger.info(f"Found existing student by A-number: {student.first_name} {student.last_name}")
+            # Ensure student has a user
+            student = ensure_student_has_user(student, email_handle)
             return student
         except Student.DoesNotExist:
             pass
@@ -228,12 +314,14 @@ def create_or_find_student(first_name, last_name, email, a_number, phone):
                 last_name__iexact=last_name
             )
             logger.info(f"Found existing student by name: {student.first_name} {student.last_name}")
+            # Ensure student has a user
+            student = ensure_student_has_user(student, email_handle)
             return student
         except Student.DoesNotExist:
             pass
     
-    # Create new student
-    username = a_number.lower() if a_number else email.split('@')[0]
+    # Create new student - use email handle for username
+    username = email_handle.lower()
     
     # Ensure username is unique
     original_username = username
@@ -247,11 +335,11 @@ def create_or_find_student(first_name, last_name, email, a_number, phone):
         user = User.objects.get(email=email)
         logger.info(f"Found existing user by email: {user.username}")
     else:
-        # Create user account
+        # Create user account with password "changeme!"
         user = User.objects.create_user(
             username=username,
             email=email,
-            password='onetap_default_password_2024',
+            password='changeme!',
             first_name=first_name,
             last_name=last_name,
             is_active=True
@@ -270,8 +358,7 @@ def create_or_find_student(first_name, last_name, email, a_number, phone):
         first_name=first_name,
         last_name=last_name,
         email=email,
-        a_number=a_number,
-        is_admin=False
+        username=username
     )
     
     logger.info(f"Created new student: {student.first_name} {student.last_name} ({email})")

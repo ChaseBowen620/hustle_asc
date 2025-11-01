@@ -17,8 +17,9 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog"
+import CreateUserForm from "./CreateUserForm"
 
-function CheckInStudents({ students, onCheckIn, attendances, selectedEvent }) {
+function CheckInStudents({ students, onCheckIn, attendances, selectedEvent, onUserCreated }) {
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedStudent, setSelectedStudent] = useState(null)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
@@ -49,14 +50,17 @@ function CheckInStudents({ students, onCheckIn, attendances, selectedEvent }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center space-x-2">
-        <Search className="w-5 h-5 text-gray-500" />
-        <Input
-          placeholder="Search students..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="max-w-sm"
-        />
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-2">
+          <Search className="w-5 h-5 text-gray-500" />
+          <Input
+            placeholder="Search students..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="max-w-sm"
+          />
+        </div>
+        <CreateUserForm onUserCreated={onUserCreated} />
       </div>
 
       <div className="border rounded-lg">

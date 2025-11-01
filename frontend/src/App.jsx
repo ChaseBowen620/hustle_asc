@@ -5,7 +5,6 @@ import Navbar from "./components/Navbar"
 import PublicNavbar from "./components/PublicNavbar"
 import EventsListPage from "@/pages/EventsListPage"
 import CheckInPage from "@/pages/CheckInPage"
-import AdminPage from "@/pages/AdminPage"
 import LoginPage from "./pages/LoginPage"
 import LandingPage from "./pages/LandingPage"
 import AboutPage from "./pages/AboutPage"
@@ -15,6 +14,8 @@ import { useAuth } from "@/hooks/useAuth"
 import StudentDashboard from "./pages/StudentDashboard"
 import AdminDashboardPage from "./pages/AdminDashboardPage"
 import SettingsPage from "./pages/SettingsPage"
+import PublicCheckInPage from "./pages/PublicCheckInPage"
+import GeneralCheckInPage from "./pages/GeneralCheckInPage"
 
 function PrivateRoute({ children }) {
   const { user } = useAuth()
@@ -45,6 +46,8 @@ function App() {
             <Route path="/about" element={<AboutPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
+            <Route path="/check-in" element={<GeneralCheckInPage />} />
+            <Route path="/check-in/public/:eventId" element={<PublicCheckInPage />} />
 
             {/* Student route */}
             <Route
@@ -73,7 +76,6 @@ function App() {
                 <Route path="/events" element={<EventsListPage />} />
                 <Route path="/check-in" element={<CheckInPage />} />
                 <Route path="/check-in/:eventId" element={<CheckInPage />} />
-                <Route path="/admin" element={<AdminPage />} />
               </>
             )}
           </Route>

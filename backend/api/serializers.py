@@ -23,7 +23,10 @@ class EventSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Event
-        fields = ['id', 'name', 'organization', 'event_type', 'description', 'date', 'location', 'has_passed']
+        fields = [
+            'id', 'name', 'organization', 'event_type', 'description', 'date', 'location', 'has_passed',
+            'is_recurring', 'recurrence_type', 'recurrence_end_date', 'parent_event'
+        ]
 
 class AttendanceSerializer(serializers.ModelSerializer):
     student = StudentSerializer(read_only=True)

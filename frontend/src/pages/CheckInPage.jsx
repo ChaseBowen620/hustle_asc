@@ -15,6 +15,7 @@ import {
 import { Search, ChevronLeft } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import CheckInStudents from "@/components/CheckInStudents"
+import QRCodeGenerator from "@/components/QRCodeGenerator"
 import { API_URL } from '@/config/api'
 
 function CheckInPage() {
@@ -70,6 +71,11 @@ function CheckInPage() {
     } catch (error) {
       console.error('Error fetching students:', error)
     }
+  }
+
+  const handleUserCreated = () => {
+    // Refresh the students list when a new user is created
+    fetchStudents()
   }
 
   const fetchAttendances = async () => {
@@ -168,6 +174,8 @@ function CheckInPage() {
           </div>
 
           <div className="space-y-4">
+            <h2 className="text-lg font-semibold">Today's Events</h2>
+            
             <div className="border rounded-lg">
               <Table>
                 <TableHeader>
@@ -236,6 +244,7 @@ function CheckInPage() {
             onCheckIn={handleCheckIn}
             attendances={attendances}
             selectedEvent={selectedEvent}
+            onUserCreated={handleUserCreated}
           />
         </div>
       )}

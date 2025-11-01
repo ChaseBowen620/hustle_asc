@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/hooks/useAuth"
 import axios from "axios"
 import { API_URL } from '@/config/api'
+import QRCodeGenerator from "@/components/QRCodeGenerator"
 
 function SettingsPage() {
   const [userInfo, setUserInfo] = useState(null)
@@ -208,6 +209,29 @@ function SettingsPage() {
             </form>
           </CardContent>
         </Card>
+
+        {/* QR Code Generator Card - Only for Admin Users */}
+        {userInfo.is_admin && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Check-In QR Code</CardTitle>
+              <CardDescription>
+                Generate a QR code for students to check in to events
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <p className="text-sm text-gray-600">
+                  This QR code will direct students to a general check-in page that automatically 
+                  finds the closest available event for today.
+                </p>
+                <div className="flex justify-center">
+                  <QRCodeGenerator isGeneral={true} />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   )

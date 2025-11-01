@@ -2,6 +2,8 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Select,
   SelectContent,
@@ -21,6 +23,9 @@ function CreateEvent({ onCreateEvent, initialData }) {
     description: "",
     location: "",
     date: "",
+    is_recurring: false,
+    recurrence_type: "none",
+    recurrence_end_date: "",
   })
   const [organizations, setOrganizations] = useState([])
   const [eventTypes, setEventTypes] = useState([])
@@ -46,6 +51,9 @@ function CreateEvent({ onCreateEvent, initialData }) {
         description: initialData.description || "",
         location: initialData.location,
         date: new Date(initialData.date).toISOString().slice(0, 16), // Format for datetime-local input
+        is_recurring: initialData.is_recurring || false,
+        recurrence_type: initialData.recurrence_type || "none",
+        recurrence_end_date: initialData.recurrence_end_date ? new Date(initialData.recurrence_end_date).toISOString().slice(0, 16) : "",
       })
       
       if (isCustomType) {
@@ -98,7 +106,17 @@ function CreateEvent({ onCreateEvent, initialData }) {
       date: new Date(eventData.date).toISOString(),
     })
     if (!initialData) {
-      setEventData({ organization: "", event_type: "", name: "", description: "", location: "", date: "" })
+      setEventData({ 
+        organization: "", 
+        event_type: "", 
+        name: "", 
+        description: "", 
+        location: "", 
+        date: "",
+        is_recurring: false,
+        recurrence_type: "none",
+        recurrence_end_date: ""
+      })
       setIsCustomEventType(false)
       setCustomEventType("")
     }
@@ -210,6 +228,55 @@ function CreateEvent({ onCreateEvent, initialData }) {
           onChange={(e) => setEventData({ ...eventData, date: e.target.value })}
           required
         />
+      </div>
+
+      {/* Recurring Event Options */}
+      <div className="space-y-4 border-t pt-4">
+        <div className="flex items-center space-x-2">
+          <Checkbox
+            id="is_recurring"
+            checked={eventData.is_recurring}
+            onCheckedChange={(checked) => setEventData({ ...eventData, is_recurring: checked })}
+          />
+          <Label htmlFor="is_recurring" className="text-sm font-medium">
+            Make this a recurring event
+          </Label>
+        </div>
+
+        {eventData.is_recurring && (
+          <div className="space-y-4 pl-6 border-l-2 border-gray-200">
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Recurrence Frequency</Label>
+              <Select
+                value={eventData.recurrence_type}
+                onValueChange={(value) => setEventData({ ...eventData, recurrence_type: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select recurrence frequency" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="daily">Daily</SelectItem>
+                  <SelectItem value="weekly">Weekly</SelectItem>
+                  <SelectItem value="biweekly">Every 2 Weeks</SelectItem>
+                  <SelectItem value="monthly">Monthly</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">End Date (Optional)</Label>
+              <Input
+                type="datetime-local"
+                value={eventData.recurrence_end_date}
+                onChange={(e) => setEventData({ ...eventData, recurrence_end_date: e.target.value })}
+                placeholder="Leave empty for no end date"
+              />
+              <p className="text-xs text-gray-500">
+                If no end date is specified, events will be created for 1 year from the start date.
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
       <Button type="submit" className="w-full">
