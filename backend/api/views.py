@@ -514,7 +514,7 @@ def student_points(request):
     
     # Apply organization filter if admin
     if admin_profile and admin_profile.role != 'Super Admin':
-        students = students.filter(attendances__event__organization=admin_profile.role)
+        students = students.filter(attendances__event__organization=admin_profile.role).distinct()
     
     # Get current date
     now = timezone.now()
@@ -532,8 +532,8 @@ def student_points(request):
             semester_end = timezone.make_aware(datetime(current_year, 8, 1))
         
         students = students.annotate(
-            filtered_points=Sum(
-                'attendances__event__points',
+            filtered_points=Count(
+                'attendances',
                 filter=models.Q(
                     attendances__event__date__gte=semester_start,
                     attendances__event__date__lt=semester_end
@@ -549,15 +549,15 @@ def student_points(request):
         )
         
         students = students.annotate(
-            filtered_points=Sum(
-                'attendances__event__points',
+            filtered_points=Count(
+                'attendances',
                 filter=models.Q(attendances__event__date__gte=academic_year_start)
             )
         )
     
     else:  # 'all'
         students = students.annotate(
-            filtered_points=Sum('attendances__event__points')
+            filtered_points=Count('attendances')
         )
 
     # Order by points (handling NULL values)
