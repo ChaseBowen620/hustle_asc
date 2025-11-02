@@ -91,12 +91,16 @@ function EventsListPage() {
         location: newEvent.location,
         organization: newEvent.organization,
         event_type: newEvent.event_type,
+        is_recurring: newEvent.is_recurring || false,
+        recurrence_type: newEvent.recurrence_type || 'none',
+        recurrence_end_date: newEvent.recurrence_end_date || null,
       }, {
         headers: {
           'Authorization': `Bearer ${user?.token}`
         }
       })
-      setEvents([...events, response.data])
+      // Refetch events to get all recurring instances and updated data
+      await fetchEvents()
       setShowCreateDialog(false)
     } catch (error) {
       console.error('Error creating event:', error)
@@ -112,14 +116,16 @@ function EventsListPage() {
         location: updatedEvent.location,
         organization: updatedEvent.organization,
         event_type: updatedEvent.event_type,
+        is_recurring: updatedEvent.is_recurring || false,
+        recurrence_type: updatedEvent.recurrence_type || 'none',
+        recurrence_end_date: updatedEvent.recurrence_end_date || null,
       }, {
         headers: {
           'Authorization': `Bearer ${user?.token}`
         }
       })
-      setEvents(events.map(event => 
-        event.id === editingEvent.id ? response.data : event
-      ))
+      // Refetch events to get all recurring instances and updated data
+      await fetchEvents()
       setEditingEvent(null)
     } catch (error) {
       console.error('Error updating event:', error)
@@ -202,6 +208,7 @@ function EventsListPage() {
           <TableHead>Event Type</TableHead>
           <TableHead>Name</TableHead>
           <TableHead>Date</TableHead>
+          <TableHead className="hidden sm:table-cell">Recurrence Type</TableHead>
           <TableHead className="hidden sm:table-cell">Location</TableHead>
           {showAttendance && <TableHead>Attendance</TableHead>}
           <TableHead className="w-[70px]"></TableHead>
@@ -220,6 +227,15 @@ function EventsListPage() {
               <span className="hidden sm:inline">
                 {format(new Date(event.date), 'MMM d, yyyy h:mm a')}
               </span>
+            </TableCell>
+            <TableCell className="hidden sm:table-cell">
+              {event.is_recurring && event.recurrence_type && event.recurrence_type !== 'none' ? (
+                event.recurrence_type === 'daily' ? 'Daily' :
+                event.recurrence_type === 'weekly' ? 'Weekly' :
+                event.recurrence_type === 'biweekly' ? 'Every 2 Weeks' :
+                event.recurrence_type === 'monthly' ? 'Monthly' :
+                event.recurrence_type
+              ) : '—'}
             </TableCell>
             <TableCell className="hidden sm:table-cell">{event.location}</TableCell>
             {showAttendance && (

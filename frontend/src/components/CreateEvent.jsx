@@ -15,14 +15,197 @@ import axios from "axios"
 import { API_URL } from '@/config/api'
 import { useAuth } from "@/hooks/useAuth"
 
+// Helper function to get the next hour in Mountain Time, rounded up
+function getNextHourInMountainTime() {
+  // Get current time in Mountain Time (America/Denver timezone)
+  const now = new Date()
+  
+  // Get Mountain Time string components
+  const mountainTimeString = now.toLocaleString("en-US", { 
+    timeZone: "America/Denver",
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  })
+  
+  // Parse the Mountain Time string (format: MM/DD/YYYY, HH:MM)
+  const [datePart, timePart] = mountainTimeString.split(', ')
+  const [month, day, year] = datePart.split('/').map(Number)
+  const [hours, minutes] = timePart.split(':').map(Number)
+  
+  // Round up to the next hour
+  let nextHour = hours + 1
+  let nextDay = day
+  let nextMonth = month
+  let nextYear = year
+  
+  if (nextHour >= 24) {
+    nextHour = 0
+    nextDay++
+    // Handle month/year rollover (simplified - assumes not crossing year boundary in practice)
+    const daysInMonth = new Date(year, month, 0).getDate()
+    if (nextDay > daysInMonth) {
+      nextDay = 1
+      nextMonth++
+      if (nextMonth > 12) {
+        nextMonth = 1
+        nextYear++
+      }
+    }
+  }
+  
+  // Format for datetime-local input (YYYY-MM-DDTHH:MM)
+  const yearStr = String(nextYear)
+  const monthStr = String(nextMonth).padStart(2, '0')
+  const dayStr = String(nextDay).padStart(2, '0')
+  const hoursStr = String(nextHour).padStart(2, '0')
+  const minutesStr = '00'
+  
+  return `${yearStr}-${monthStr}-${dayStr}T${hoursStr}:${minutesStr}`
+}
+
+// Helper function to convert datetime-local value (treated as Mountain Time) to ISO string (UTC)
+function mountainTimeToISO(datetimeLocal) {
+  if (!datetimeLocal) return ""
+  
+  // Parse the datetime-local string (assumes it represents Mountain Time)
+  const [datePart, timePart] = datetimeLocal.split('T')
+  const [year, month, day] = datePart.split('-').map(Number)
+  const [hours, minutes] = timePart.split(':').map(Number)
+  
+  // Create a UTC date that represents midnight on this date
+  // Then we'll calculate the offset by seeing what time it is in Mountain Time
+  const dateString = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`
+  
+  // Try different UTC times until we find one that displays as our desired Mountain Time
+  // We know it's roughly UTC-7 (MST) or UTC-6 (MDT), so we'll try both
+  // Start by assuming UTC-7 (MST)
+  let testUTC = new Date(`${dateString}Z`)
+  testUTC.setUTCHours(testUTC.getUTCHours() + 7) // Add 7 hours assuming MST
+  
+  // Check if this UTC time, when converted to Mountain Time, matches our input
+  let mountainCheck = testUTC.toLocaleString("en-US", {
+    timeZone: "America/Denver",
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  })
+  
+  const [checkDatePart, checkTimePart] = mountainCheck.split(', ')
+  const [checkMonth, checkDay, checkYear] = checkDatePart.split('/').map(Number)
+  const [checkHours, checkMinutes] = checkTimePart.split(':').map(Number)
+  
+  // If it matches, we're done
+  if (checkYear === year && checkMonth === month && checkDay === day && 
+      checkHours === hours && checkMinutes === minutes) {
+    return testUTC.toISOString()
+  }
+  
+  // Try UTC-6 (MDT)
+  testUTC = new Date(`${dateString}Z`)
+  testUTC.setUTCHours(testUTC.getUTCHours() + 6) // Add 6 hours assuming MDT
+  
+  mountainCheck = testUTC.toLocaleString("en-US", {
+    timeZone: "America/Denver",
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  })
+  
+  const [checkDatePart2, checkTimePart2] = mountainCheck.split(', ')
+  const [checkMonth2, checkDay2, checkYear2] = checkDatePart2.split('/').map(Number)
+  const [checkHours2, checkMinutes2] = checkTimePart2.split(':').map(Number)
+  
+  // If it matches, return it
+  if (checkYear2 === year && checkMonth2 === month && checkDay2 === day && 
+      checkHours2 === hours && checkMinutes2 === minutes) {
+    return testUTC.toISOString()
+  }
+  
+  // If neither worked, calculate the exact offset by iterating
+  // Start with a close guess and adjust
+  testUTC = new Date(`${dateString}Z`)
+  
+  // Binary search for the correct UTC time
+  for (let offsetHours = 6; offsetHours <= 7; offsetHours += 0.25) {
+    const testDate = new Date(`${dateString}Z`)
+    testDate.setUTCHours(testDate.getUTCHours() + offsetHours)
+    
+    const mtCheck = testDate.toLocaleString("en-US", {
+      timeZone: "America/Denver",
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    })
+    
+    const [mtDatePart, mtTimePart] = mtCheck.split(', ')
+    const [mtMonth, mtDay, mtYear] = mtDatePart.split('/').map(Number)
+    const [mtHours, mtMinutes] = mtTimePart.split(':').map(Number)
+    
+    if (mtYear === year && mtMonth === month && mtDay === day && 
+        mtHours === hours && mtMinutes === minutes) {
+      return testDate.toISOString()
+    }
+  }
+  
+  // Fallback: return with 7 hour offset (MST)
+  testUTC = new Date(`${dateString}Z`)
+  testUTC.setUTCHours(testUTC.getUTCHours() + 7)
+  return testUTC.toISOString()
+}
+
+// Helper function to convert ISO UTC string to Mountain Time datetime-local string
+function isoToMountainTime(isoString) {
+  if (!isoString) return ""
+  
+  const utcDate = new Date(isoString)
+  
+  // Convert to Mountain Time
+  const mountainTimeString = utcDate.toLocaleString("en-US", {
+    timeZone: "America/Denver",
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  })
+  
+  // Parse and reformat for datetime-local
+  const [datePart, timePart] = mountainTimeString.split(', ')
+  const [month, day, year] = datePart.split('/').map(Number)
+  const [hours, minutes] = timePart.split(':').map(Number)
+  
+  const yearStr = String(year)
+  const monthStr = String(month).padStart(2, '0')
+  const dayStr = String(day).padStart(2, '0')
+  const hoursStr = String(hours).padStart(2, '0')
+  const minutesStr = String(minutes).padStart(2, '0')
+  
+  return `${yearStr}-${monthStr}-${dayStr}T${hoursStr}:${minutesStr}`
+}
+
 function CreateEvent({ onCreateEvent, initialData }) {
+  // Initialize date to next hour in Mountain Time if no initialData
   const [eventData, setEventData] = useState({
     organization: "",
     event_type: "",
     name: "",
     description: "",
     location: "",
-    date: "",
+    date: initialData ? "" : getNextHourInMountainTime(),
     is_recurring: false,
     recurrence_type: "none",
     recurrence_end_date: "",
@@ -50,10 +233,10 @@ function CreateEvent({ onCreateEvent, initialData }) {
         name: initialData.name,
         description: initialData.description || "",
         location: initialData.location,
-        date: new Date(initialData.date).toISOString().slice(0, 16), // Format for datetime-local input
+        date: isoToMountainTime(initialData.date), // Convert UTC to Mountain Time
         is_recurring: initialData.is_recurring || false,
         recurrence_type: initialData.recurrence_type || "none",
-        recurrence_end_date: initialData.recurrence_end_date ? new Date(initialData.recurrence_end_date).toISOString().slice(0, 16) : "",
+        recurrence_end_date: initialData.recurrence_end_date ? isoToMountainTime(initialData.recurrence_end_date) : "",
       })
       
       if (isCustomType) {
@@ -99,11 +282,33 @@ function CreateEvent({ onCreateEvent, initialData }) {
     setEventData({ ...eventData, event_type: value })
   }
 
+  // Helper function to get end of year in Mountain Time (December 31 at 23:59:59)
+  const getEndOfYearInMountainTime = (dateString) => {
+    if (!dateString) return ""
+    
+    // Parse the date string to get the year
+    const [datePart] = dateString.split('T')
+    const [year] = datePart.split('-').map(Number)
+    
+    // Create December 31 at 23:59:59 in Mountain Time for that year
+    // Format: YYYY-12-31T23:59
+    return `${year}-12-31T23:59`
+  }
+
   const handleSubmit = (e) => {
     e.preventDefault()
+    
+    // Automatically set recurrence_end_date to end of year if recurring
+    let recurrenceEndDate = ""
+    if (eventData.is_recurring && eventData.recurrence_type !== 'none') {
+      const endOfYear = getEndOfYearInMountainTime(eventData.date)
+      recurrenceEndDate = mountainTimeToISO(endOfYear)
+    }
+    
     onCreateEvent({
       ...eventData,
-      date: new Date(eventData.date).toISOString(),
+      date: mountainTimeToISO(eventData.date),
+      recurrence_end_date: recurrenceEndDate,
     })
     if (!initialData) {
       setEventData({ 
@@ -112,7 +317,7 @@ function CreateEvent({ onCreateEvent, initialData }) {
         name: "", 
         description: "", 
         location: "", 
-        date: "",
+        date: getNextHourInMountainTime(),
         is_recurring: false,
         recurrence_type: "none",
         recurrence_end_date: ""
@@ -261,18 +466,8 @@ function CreateEvent({ onCreateEvent, initialData }) {
                   <SelectItem value="monthly">Monthly</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">End Date (Optional)</Label>
-              <Input
-                type="datetime-local"
-                value={eventData.recurrence_end_date}
-                onChange={(e) => setEventData({ ...eventData, recurrence_end_date: e.target.value })}
-                placeholder="Leave empty for no end date"
-              />
               <p className="text-xs text-gray-500">
-                If no end date is specified, events will be created for 1 year from the start date.
+                Recurring events will be created until the end of the year ({new Date(eventData.date).getFullYear() || new Date().getFullYear()}).
               </p>
             </div>
           </div>
