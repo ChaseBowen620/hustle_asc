@@ -8,7 +8,12 @@ function PublicNavbar() {
     <nav className="bg-slate-800">
       <div className="max-w-6xl mx-auto px-4">
         <div className="flex h-16 items-center justify-between">
-          <div className="flex space-x-8">
+          <div className="flex items-center space-x-8">
+            <img 
+              src="https://avatars.githubusercontent.com/u/94191472?s=280&v=4"
+              alt="Logo"
+              className="h-12 w-12 brightness-0 invert"
+            />
             <Link
               to="/"
               className={`inline-flex items-center px-1 pt-1 text-sm font-medium ${

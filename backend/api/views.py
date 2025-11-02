@@ -47,8 +47,9 @@ class EventViewSet(viewsets.ModelViewSet):
         queryset = Event.objects.all()
         
         # Check if user is admin and filter by organization
+        # Super Admin, DAISSA, and Faculty can see all events
         admin_profile = getattr(self.request.user, 'adminuser', None)
-        if admin_profile and admin_profile.role != 'Super Admin':
+        if admin_profile and admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
             queryset = queryset.filter(organization=admin_profile.role)
         
         return queryset
@@ -183,8 +184,9 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         queryset = Attendance.objects.select_related('student', 'event').all()
         
         # Check if user is admin and filter by organization
+        # Super Admin, DAISSA, and Faculty can see all events
         admin_profile = getattr(self.request.user, 'adminuser', None)
-        if admin_profile and admin_profile.role != 'Super Admin':
+        if admin_profile and admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
             queryset = queryset.filter(event__organization=admin_profile.role)
         
         return queryset
@@ -441,14 +443,15 @@ class CustomTokenObtainPairView(TokenObtainPairView):
 @permission_classes([IsAuthenticated])
 def total_students(request):
     # Check if user is admin and filter by organization
+    # Super Admin, DAISSA, and Faculty can see all students
     admin_profile = getattr(request.user, 'adminuser', None)
-    if admin_profile and admin_profile.role != 'Super Admin':
+    if admin_profile and admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
         # Filter students who attended events from this admin's organization
         count = Student.objects.filter(
             attendances__event__organization=admin_profile.role
         ).distinct().count()
     else:
-        # Super Admin or non-admin sees all students
+        # Super Admin, DAISSA, Faculty, or non-admin sees all students
         count = Student.objects.count()
     return Response({'count': count})
 
@@ -464,7 +467,8 @@ def participating_students(request):
     query = Student.objects
     
     # Apply organization filter if admin
-    if admin_profile and admin_profile.role != 'Super Admin':
+    # Super Admin, DAISSA, and Faculty can see all students
+    if admin_profile and admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
         query = query.filter(attendances__event__organization=admin_profile.role)
     
     # Get current date
@@ -505,6 +509,7 @@ def participating_students(request):
 @permission_classes([IsAuthenticated])
 def student_points(request):
     filter_type = request.GET.get('filter', 'semester')
+    organization_filter = request.GET.get('organization', None)
     
     # Check if user is admin and filter by organization
     admin_profile = getattr(request.user, 'adminuser', None)
@@ -512,9 +517,16 @@ def student_points(request):
     # Base query
     students = Student.objects.all()
     
-    # Apply organization filter if admin
-    if admin_profile and admin_profile.role != 'Super Admin':
-        students = students.filter(attendances__event__organization=admin_profile.role).distinct()
+    # Apply organization filter
+    # Super Admin, DAISSA, and Faculty can see all students, and can filter by organization
+    if admin_profile:
+        if admin_profile.role in ['Super Admin', 'DAISSA', 'Faculty']:
+            # Users who can see all data can filter by organization parameter
+            if organization_filter:
+                students = students.filter(attendances__event__organization=organization_filter).distinct()
+        else:
+            # Other admins are filtered to their own organization
+            students = students.filter(attendances__event__organization=admin_profile.role).distinct()
     
     # Get current date
     now = timezone.now()
@@ -577,13 +589,14 @@ def student_points(request):
 @permission_classes([IsAuthenticated])
 def attendance_overview(request):
     # Check if user is admin and filter by organization
+    # Super Admin, DAISSA, and Faculty can see all events
     admin_profile = getattr(request.user, 'adminuser', None)
     
     # Base query
     attendance_query = Attendance.objects.all()
     
     # Apply organization filter if admin
-    if admin_profile and admin_profile.role != 'Super Admin':
+    if admin_profile and admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
         attendance_query = attendance_query.filter(event__organization=admin_profile.role)
     
     attendance_data = attendance_query.annotate(

@@ -34,15 +34,24 @@ function AdminDashboardPage() {
   const [eventTypes, setEventTypes] = useState({})
   const [uniqueEventTypes, setUniqueEventTypes] = useState([])
   const [selectedEventType, setSelectedEventType] = useState([])
+  const [organizations, setOrganizations] = useState([])
+  const [selectedOrganization, setSelectedOrganization] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
   const studentsPerPage = 10
-  const { user } = useAuth()
+  const { user, isAdmin } = useAuth()
+  const userIsAdmin = isAdmin(user)
+  // Check if user can see all data (Super Admin, DAISSA, or Faculty)
+  const canSeeAllData = userIsAdmin && user?.admin_profile?.role && 
+    ['Super Admin', 'DAISSA', 'Faculty'].includes(user.admin_profile.role)
 
   useEffect(() => {
     fetchStudentData()
     fetchEventData()
     fetchAttendanceData()
-  }, [filter, selectedEventType])
+    if (canSeeAllData) {
+      fetchOrganizations()
+    }
+  }, [filter, selectedEventType, selectedOrganization, canSeeAllData])
 
   const fetchStudentData = async () => {
     try {
@@ -52,13 +61,19 @@ function AdminDashboardPage() {
         }
       }
       
+      // Build student points URL with organization filter if applicable
+      let studentPointsUrl = `${API_URL}/api/students/points/?filter=${filter}`
+      if (canSeeAllData && selectedOrganization) {
+        studentPointsUrl += `&organization=${encodeURIComponent(selectedOrganization)}`
+      }
+      
       const [studentData, attendanceData, eventData, totalStudentsRes, participatingStudentsRes, studentPointsRes] = await Promise.all([
         axios.get(`${API_URL}/api/students`, authHeaders),
         axios.get(`${API_URL}/api/attendance`, authHeaders),
         axios.get(`${API_URL}/api/events`, authHeaders),
         axios.get(`${API_URL}/api/students/total/`, authHeaders),
         axios.get(`${API_URL}/api/students/participating/?filter=${filter}`, authHeaders),
-        axios.get(`${API_URL}/api/students/points/?filter=${filter}`, authHeaders)
+        axios.get(studentPointsUrl, authHeaders)
       ])
       
       // Create event date map
@@ -162,6 +177,21 @@ function AdminDashboardPage() {
       setUniqueEventTypes(eventTypesResponse.data)
     } catch (error) {
       console.error('Error fetching event data:', error)
+    }
+  }
+
+  const fetchOrganizations = async () => {
+    try {
+      const authHeaders = {
+        headers: {
+          'Authorization': `Bearer ${user?.token}`
+        }
+      }
+      
+      const response = await axios.get(`${API_URL}/api/events/organizations/`, authHeaders)
+      setOrganizations(response.data)
+    } catch (error) {
+      console.error('Error fetching organizations:', error)
     }
   }
 
@@ -345,25 +375,54 @@ function AdminDashboardPage() {
         </TabsList>
 
         <TabsContent value="students" className="space-y-4">
-          <div className="flex justify-end space-x-2">
-            <Button
-              variant={filter === "all" ? "default" : "outline"}
-              onClick={() => setFilter("all")}
-            >
-              All Time
-            </Button>
-            <Button
-              variant={filter === "year" ? "default" : "outline"}
-              onClick={() => setFilter("year")}
-            >
-              This Year
-            </Button>
-            <Button
-              variant={filter === "semester" ? "default" : "outline"}
-              onClick={() => setFilter("semester")}
-            >
-              This Semester
-            </Button>
+          <div className="flex justify-between items-center">
+            {canSeeAllData && (
+              <div className="flex items-center space-x-2">
+                <label className="text-sm font-medium">Filter by Organization:</label>
+                <Select
+                  value={selectedOrganization || "all"}
+                  onValueChange={(value) => {
+                    setSelectedOrganization(value === "all" ? "" : value)
+                    setCurrentPage(1) // Reset to first page when filter changes
+                  }}
+                >
+                  <SelectTrigger className="w-[200px]">
+                    <SelectValue placeholder="All Organizations" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Organizations</SelectItem>
+                    {organizations.map((org, index) => (
+                      <SelectItem 
+                        key={`org-${index}`} 
+                        value={org}
+                      >
+                        {org}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="flex space-x-2">
+              <Button
+                variant={filter === "all" ? "default" : "outline"}
+                onClick={() => setFilter("all")}
+              >
+                All Time
+              </Button>
+              <Button
+                variant={filter === "year" ? "default" : "outline"}
+                onClick={() => setFilter("year")}
+              >
+                This Year
+              </Button>
+              <Button
+                variant={filter === "semester" ? "default" : "outline"}
+                onClick={() => setFilter("semester")}
+              >
+                This Semester
+              </Button>
+            </div>
           </div>
 
           <div className="border rounded-lg">
