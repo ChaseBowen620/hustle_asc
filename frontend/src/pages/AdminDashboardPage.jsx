@@ -8,6 +8,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { API_URL } from '@/config/api'
 import '../lib/chart'  // Import the chart registration
+import { format } from "date-fns"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   Select,
   SelectContent,
@@ -38,6 +46,9 @@ function AdminDashboardPage() {
   const [selectedOrganization, setSelectedOrganization] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
   const studentsPerPage = 10
+  const [selectedEvent, setSelectedEvent] = useState(null)
+  const [showEventDetails, setShowEventDetails] = useState(false)
+  const [allEvents, setAllEvents] = useState([]) // Store all events for lookup
   const { user, isAdmin } = useAuth()
   const userIsAdmin = isAdmin(user)
   // Check if user can see all data (Super Admin, DAISSA, or Faculty)
@@ -159,6 +170,9 @@ function AdminDashboardPage() {
         axios.get(`${API_URL}/api/events/types`, authHeaders)
       ])
       
+      // Store all events for lookup when clicking chart points
+      setAllEvents(eventsResponse.data)
+      
       // Create a map of event IDs to their types
       const eventTypeMap = eventsResponse.data.reduce((acc, event) => {
         acc[event.id] = {
@@ -168,6 +182,7 @@ function AdminDashboardPage() {
           name: event.name,
           organization: event.organization,
           event_type: event.event_type,
+          fullEvent: event // Store full event object for dialog
         }
         return acc
       }, {})
@@ -205,7 +220,7 @@ function AdminDashboardPage() {
       
       const response = await axios.get(`${API_URL}/api/attendance`, authHeaders)
       
-      // Group attendance by event type and date
+      // Group attendance by event type and date, storing event IDs for each point
       const groupedData = response.data.reduce((acc, record) => {
         const eventInfo = eventTypes[record.event]
         if (!eventInfo) return acc // Skip if no event info
@@ -227,10 +242,17 @@ function AdminDashboardPage() {
         }
         
         if (!acc[typeId].dates[date]) {
-          acc[typeId].dates[date] = 0
+          acc[typeId].dates[date] = {
+            count: 0,
+            eventIds: [] // Store event IDs for this date
+          }
         }
         
-        acc[typeId].dates[date]++
+        acc[typeId].dates[date].count++
+        // Store event ID if not already stored (avoid duplicates)
+        if (!acc[typeId].dates[date].eventIds.includes(record.event)) {
+          acc[typeId].dates[date].eventIds.push(record.event)
+        }
         return acc
       }, {})
 
@@ -238,7 +260,11 @@ function AdminDashboardPage() {
       const transformedData = Object.values(groupedData).map(typeData => ({
         event_type: typeData.event_type,
         dates: Object.keys(typeData.dates),
-        attendance_counts: Object.values(typeData.dates)
+        attendance_counts: Object.values(typeData.dates).map(d => d.count || d), // Handle both old and new format
+        eventIdsByDate: Object.keys(typeData.dates).reduce((acc, date) => {
+          acc[date] = typeData.dates[date].eventIds || []
+          return acc
+        }, {})
       }))
 
       setAttendanceData(transformedData)
@@ -253,10 +279,35 @@ function AdminDashboardPage() {
     datasets: attendanceData.map((eventData, index) => {
       // Sort the data points by date
       const sortedData = eventData.dates
-        .map((date, index) => ({
-          x: new Date(date),
-          y: eventData.attendance_counts[index]
-        }))
+        .map((date, dateIndex) => {
+          // Get event IDs for this date
+          const eventIds = eventData.eventIdsByDate?.[date] || []
+          // Parse date properly - handle ISO format or date string
+          let dateObj
+          try {
+            // Try parsing as ISO string first
+            dateObj = new Date(date)
+            // If invalid, try adding time if it's just a date
+            if (isNaN(dateObj.getTime()) && date.match(/^\d{4}-\d{2}-\d{2}$/)) {
+              dateObj = new Date(date + 'T00:00:00')
+            }
+            // If still invalid, use current date as fallback
+            if (isNaN(dateObj.getTime())) {
+              console.warn('Invalid date:', date)
+              dateObj = new Date()
+            }
+          } catch (e) {
+            console.warn('Error parsing date:', date, e)
+            dateObj = new Date()
+          }
+          
+          return {
+            x: dateObj,
+            y: eventData.attendance_counts[dateIndex],
+            eventIds: eventIds, // Store event IDs with each point
+            date: date // Store original date string for display
+          }
+        })
         .sort((a, b) => a.x - b.x)
       
       return {
@@ -268,6 +319,26 @@ function AdminDashboardPage() {
         spanGaps: true
       }
     })
+  }
+
+  const handleChartClick = (event, elements) => {
+    if (elements.length === 0) return
+    
+    const element = elements[0]
+    const datasetIndex = element.datasetIndex
+    const index = element.index
+    const point = chartData.datasets[datasetIndex].data[index]
+    
+    // Get the first event ID from the clicked point
+    if (point.eventIds && point.eventIds.length > 0) {
+      const eventId = point.eventIds[0]
+      const clickedEvent = allEvents.find(e => e.id === eventId)
+      
+      if (clickedEvent) {
+        setSelectedEvent(clickedEvent)
+        setShowEventDetails(true)
+      }
+    }
   }
 
   const chartOptions = {
@@ -293,12 +364,48 @@ function AdminDashboardPage() {
       legend: {
         display: true,
         position: 'top'
+      },
+      tooltip: {
+        callbacks: {
+          title: () => '', // Remove default title
+          label: (context) => {
+            const point = context.raw
+            // Get the date from the point's date field (already in correct format)
+            const dateStr = point.date || ''
+            // Format date to mm/dd/yyyy
+            let formattedDate = dateStr
+            if (dateStr) {
+              try {
+                const date = new Date(dateStr)
+                if (!isNaN(date.getTime())) {
+                  formattedDate = format(date, 'MM/dd/yyyy')
+                }
+              } catch (e) {
+                // If parsing fails, try to format the string directly
+                formattedDate = dateStr
+              }
+            }
+            return [
+              `Date: ${formattedDate}`,
+              `Attendees: ${context.parsed.y}`
+            ]
+          }
+        }
       }
     },
     elements: {
       line: {
         tension: 0
+      },
+      point: {
+        radius: 4,
+        hoverRadius: 6,
+        cursor: 'pointer'
       }
+    },
+    onClick: handleChartClick,
+    onHover: (event, activeElements) => {
+      event.native.target.style.cursor = activeElements.length > 0 ? 'pointer' : 'default'
     }
   }
 
@@ -490,6 +597,54 @@ function AdminDashboardPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Event Details Dialog */}
+      <Dialog open={showEventDetails} onOpenChange={setShowEventDetails}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{selectedEvent?.name}</DialogTitle>
+            <DialogDescription>
+              Event details and information
+            </DialogDescription>
+          </DialogHeader>
+          {selectedEvent && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <h4 className="font-semibold text-sm text-gray-600">Organization</h4>
+                  <p className="text-sm">{selectedEvent.organization}</p>
+                </div>
+                <div>
+                  <h4 className="font-semibold text-sm text-gray-600">Event Type</h4>
+                  <p className="text-sm">{selectedEvent.event_type}</p>
+                </div>
+                <div>
+                  <h4 className="font-semibold text-sm text-gray-600">Date & Time</h4>
+                  <p className="text-sm">{format(new Date(selectedEvent.date), 'EEEE, MMMM d, yyyy h:mm a')}</p>
+                </div>
+                <div>
+                  <h4 className="font-semibold text-sm text-gray-600">Location</h4>
+                  <p className="text-sm">{selectedEvent.location}</p>
+                </div>
+              </div>
+              {selectedEvent.description && (
+                <div>
+                  <h4 className="font-semibold text-sm text-gray-600 mb-2">Description</h4>
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{selectedEvent.description}</p>
+                </div>
+              )}
+              {selectedEvent.event_organizations && selectedEvent.event_organizations.length > 0 && (
+                <div>
+                  <h4 className="font-semibold text-sm text-gray-600 mb-2">Additional Organizations</h4>
+                  <p className="text-sm text-gray-700">
+                    {selectedEvent.event_organizations.map(eo => eo.organization_name || eo.organization).join(', ')}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
