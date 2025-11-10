@@ -394,9 +394,9 @@ function AdminDashboardPage() {
                     {organizations.map((org, index) => (
                       <SelectItem 
                         key={`org-${index}`} 
-                        value={org}
+                        value={org.name || org}
                       >
-                        {org}
+                        {org.name || org}
                       </SelectItem>
                     ))}
                   </SelectContent>

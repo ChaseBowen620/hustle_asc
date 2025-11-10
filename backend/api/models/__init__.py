@@ -6,6 +6,8 @@ from .professor import Professor
 from ._class import Class
 from .teaching_assistant import TeachingAssistant
 from .admin import AdminUser
+from .event_organization import EventOrganization
+from .organization import Organization
 
 __all__ = [
     'Student',
@@ -15,7 +17,9 @@ __all__ = [
     'Professor',
     'Class',
     'TeachingAssistant',
-    'AdminUser'
+    'AdminUser',
+    'EventOrganization',
+    'Organization'
 ]
 
 # Hello!

@@ -24,6 +24,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.db.models import Count, Sum
 from django.db import models
+from django.db.models import Q
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 import calendar
@@ -44,13 +45,19 @@ class EventViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         """Filter events by organization based on admin role"""
+        from .models import EventOrganization
+        
         queryset = Event.objects.all()
         
         # Check if user is admin and filter by organization
         # Super Admin, DAISSA, and Faculty can see all events
         admin_profile = getattr(self.request.user, 'adminuser', None)
         if admin_profile and admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
-            queryset = queryset.filter(organization=admin_profile.role)
+            # Include events where organization is primary OR where organization is secondary
+            queryset = queryset.filter(
+                Q(organization=admin_profile.role) |
+                Q(event_organizations__organization=admin_profile.role)
+            ).distinct()
         
         return queryset
 
@@ -74,9 +81,14 @@ class EventViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def organizations(self, request):
-        """Get unique organizations from filtered events"""
-        unique_organizations = self.get_queryset().values_list('organization', flat=True).distinct().order_by('organization')
-        return Response(list(unique_organizations))
+        """
+        Get all organizations from the Organization table.
+        Returns list of organization objects with id and name.
+        """
+        from .models import Organization
+        organizations = Organization.objects.all().order_by('name')
+        organizations_data = [{'id': org.id, 'name': org.name} for org in organizations]
+        return Response(organizations_data)
 
     @action(detail=False, methods=['get'])
     def functions(self, request):
@@ -116,8 +128,22 @@ class EventViewSet(viewsets.ModelViewSet):
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def create(self, request, *args, **kwargs):
-        """Override create to handle recurring events"""
+        """Override create to handle recurring events and organization validation"""
         try:
+            # Check if user is a club leader and restrict organization to their role
+            admin_profile = getattr(request.user, 'adminuser', None)
+            if admin_profile and admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
+                # Club leaders can only create events for their own organization
+                organization = request.data.get('organization')
+                if organization and organization != admin_profile.role:
+                    return Response(
+                        {'error': f'You can only create events for your own organization ({admin_profile.role})'},
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+                # Auto-set organization to their role if not provided
+                if not organization:
+                    request.data['organization'] = admin_profile.role
+            
             # Create the main event
             serializer = self.get_serializer(data=request.data)
             serializer.is_valid(raise_exception=True)
@@ -181,13 +207,19 @@ class AttendanceViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         """Filter attendance by organization based on admin role"""
+        from .models import EventOrganization
+        
         queryset = Attendance.objects.select_related('student', 'event').all()
         
         # Check if user is admin and filter by organization
         # Super Admin, DAISSA, and Faculty can see all events
         admin_profile = getattr(self.request.user, 'adminuser', None)
         if admin_profile and admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
-            queryset = queryset.filter(event__organization=admin_profile.role)
+            # Include attendances for events where organization is primary OR secondary
+            queryset = queryset.filter(
+                Q(event__organization=admin_profile.role) |
+                Q(event__event_organizations__organization=admin_profile.role)
+            ).distinct()
         
         return queryset
 
@@ -446,9 +478,11 @@ def total_students(request):
     # Super Admin, DAISSA, and Faculty can see all students
     admin_profile = getattr(request.user, 'adminuser', None)
     if admin_profile and admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
-        # Filter students who attended events from this admin's organization
+        # Filter students who attended events from this admin's organization (primary or secondary)
+        from .models import EventOrganization
         count = Student.objects.filter(
-            attendances__event__organization=admin_profile.role
+            Q(attendances__event__organization=admin_profile.role) |
+            Q(attendances__event__event_organizations__organization=admin_profile.role)
         ).distinct().count()
     else:
         # Super Admin, DAISSA, Faculty, or non-admin sees all students
@@ -469,7 +503,12 @@ def participating_students(request):
     # Apply organization filter if admin
     # Super Admin, DAISSA, and Faculty can see all students
     if admin_profile and admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
-        query = query.filter(attendances__event__organization=admin_profile.role)
+        from .models import EventOrganization
+        # Include students who attended events where organization is primary OR secondary
+        query = query.filter(
+            Q(attendances__event__organization=admin_profile.role) |
+            Q(attendances__event__event_organizations__organization=admin_profile.role)
+        )
     
     # Get current date
     now = timezone.now()
@@ -519,14 +558,22 @@ def student_points(request):
     
     # Apply organization filter
     # Super Admin, DAISSA, and Faculty can see all students, and can filter by organization
+    from .models import EventOrganization
     if admin_profile:
         if admin_profile.role in ['Super Admin', 'DAISSA', 'Faculty']:
             # Users who can see all data can filter by organization parameter
             if organization_filter:
-                students = students.filter(attendances__event__organization=organization_filter).distinct()
+                # Include events where organization is primary OR secondary
+                students = students.filter(
+                    Q(attendances__event__organization=organization_filter) |
+                    Q(attendances__event__event_organizations__organization=organization_filter)
+                ).distinct()
         else:
-            # Other admins are filtered to their own organization
-            students = students.filter(attendances__event__organization=admin_profile.role).distinct()
+            # Other admins are filtered to their own organization (primary or secondary)
+            students = students.filter(
+                Q(attendances__event__organization=admin_profile.role) |
+                Q(attendances__event__event_organizations__organization=admin_profile.role)
+            ).distinct()
     
     # Get current date
     now = timezone.now()
@@ -543,15 +590,44 @@ def student_points(request):
             semester_start = timezone.make_aware(datetime(current_year, 1, 1))
             semester_end = timezone.make_aware(datetime(current_year, 8, 1))
         
-        students = students.annotate(
-            filtered_points=Count(
-                'attendances',
-                filter=models.Q(
-                    attendances__event__date__gte=semester_start,
-                    attendances__event__date__lt=semester_end
+        # For organization filtering, we need to check both primary and secondary organizations
+        if admin_profile and admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
+            # Filter by organization (primary or secondary) AND date range
+            students = students.annotate(
+                filtered_points=Count(
+                    'attendances',
+                    filter=models.Q(
+                        Q(attendances__event__organization=admin_profile.role) |
+                        Q(attendances__event__event_organizations__organization=admin_profile.role),
+                        attendances__event__date__gte=semester_start,
+                        attendances__event__date__lt=semester_end
+                    )
                 )
             )
-        )
+        elif admin_profile and admin_profile.role in ['Super Admin', 'DAISSA', 'Faculty'] and organization_filter:
+            # Filter by organization parameter (primary or secondary) AND date range
+            students = students.annotate(
+                filtered_points=Count(
+                    'attendances',
+                    filter=models.Q(
+                        Q(attendances__event__organization=organization_filter) |
+                        Q(attendances__event__event_organizations__organization=organization_filter),
+                        attendances__event__date__gte=semester_start,
+                        attendances__event__date__lt=semester_end
+                    )
+                )
+            )
+        else:
+            # No organization filter, just date range
+            students = students.annotate(
+                filtered_points=Count(
+                    'attendances',
+                    filter=models.Q(
+                        attendances__event__date__gte=semester_start,
+                        attendances__event__date__lt=semester_end
+                    )
+                )
+            )
     
     elif filter_type == 'year':
         # Calculate academic year start (August 1st of current or previous year)
@@ -560,17 +636,69 @@ def student_points(request):
             datetime(year, 8, 1)
         )
         
-        students = students.annotate(
-            filtered_points=Count(
-                'attendances',
-                filter=models.Q(attendances__event__date__gte=academic_year_start)
+        # For organization filtering, we need to check both primary and secondary organizations
+        if admin_profile and admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
+            # Filter by organization (primary or secondary) AND date range
+            students = students.annotate(
+                filtered_points=Count(
+                    'attendances',
+                    filter=models.Q(
+                        Q(attendances__event__organization=admin_profile.role) |
+                        Q(attendances__event__event_organizations__organization=admin_profile.role),
+                        attendances__event__date__gte=academic_year_start
+                    )
+                )
             )
-        )
+        elif admin_profile and admin_profile.role in ['Super Admin', 'DAISSA', 'Faculty'] and organization_filter:
+            # Filter by organization parameter (primary or secondary) AND date range
+            students = students.annotate(
+                filtered_points=Count(
+                    'attendances',
+                    filter=models.Q(
+                        Q(attendances__event__organization=organization_filter) |
+                        Q(attendances__event__event_organizations__organization=organization_filter),
+                        attendances__event__date__gte=academic_year_start
+                    )
+                )
+            )
+        else:
+            # No organization filter, just date range
+            students = students.annotate(
+                filtered_points=Count(
+                    'attendances',
+                    filter=models.Q(attendances__event__date__gte=academic_year_start)
+                )
+            )
     
     else:  # 'all'
-        students = students.annotate(
-            filtered_points=Count('attendances')
-        )
+        # For organization filtering, we need to check both primary and secondary organizations
+        if admin_profile and admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
+            # Filter by organization (primary or secondary)
+            students = students.annotate(
+                filtered_points=Count(
+                    'attendances',
+                    filter=models.Q(
+                        Q(attendances__event__organization=admin_profile.role) |
+                        Q(attendances__event__event_organizations__organization=admin_profile.role)
+                    )
+                )
+            )
+        elif admin_profile and admin_profile.role in ['Super Admin', 'DAISSA', 'Faculty'] and organization_filter:
+            # Filter by organization parameter (primary or secondary)
+            students = students.annotate(
+                filtered_points=Count(
+                    'attendances',
+                    filter=models.Q(
+                        Q(attendances__event__organization=organization_filter) |
+                        Q(attendances__event__event_organizations__organization=organization_filter)
+                    )
+                )
+            )
+        else:
+            # No organization filter
+            students = students.annotate(
+                filtered_points=Count('attendances')
+            )
 
     # Order by points (handling NULL values)
     students = students.order_by(models.F('filtered_points').desc(nulls_last=True))
@@ -587,6 +715,362 @@ def student_points(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
+def list_admin_users(request):
+    """Get all admin users - only accessible to Super Admin, DAISSA, or Faculty"""
+    admin_profile = getattr(request.user, 'adminuser', None)
+    if not admin_profile or admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
+        return Response(
+            {'error': 'You do not have permission to view admin users'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    from .models import AdminUser
+    admin_users = AdminUser.objects.select_related('user').all().order_by('last_name', 'first_name')
+    
+    admin_users_data = []
+    for admin_user in admin_users:
+        admin_users_data.append({
+            'id': admin_user.id,
+            'user_id': admin_user.user.id,
+            'username': admin_user.user.username,
+            'email': admin_user.user.email,
+            'first_name': admin_user.first_name,
+            'last_name': admin_user.last_name,
+            'role': admin_user.role,
+            'created_at': admin_user.created_at,
+            'student_id': admin_user.user.student_profile.id if hasattr(admin_user.user, 'student_profile') else None
+        })
+    
+    return Response(admin_users_data)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_admin_user(request):
+    """Create a new admin user - only accessible to Super Admin, DAISSA, or Faculty"""
+    admin_profile = getattr(request.user, 'adminuser', None)
+    if not admin_profile or admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
+        return Response(
+            {'error': 'You do not have permission to create admin users'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    from .models import AdminUser
+    from django.contrib.auth.models import User
+    
+    role = request.data.get('role')
+    student_id = request.data.get('student_id')
+    first_name = request.data.get('first_name')
+    last_name = request.data.get('last_name')
+    email = request.data.get('email')
+    
+    if not role:
+        return Response(
+            {'error': 'role is required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # If student_id is provided, create admin from existing student
+    if student_id:
+        try:
+            student = Student.objects.get(id=student_id)
+        except Student.DoesNotExist:
+            return Response(
+                {'error': 'Student not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Check if admin user already exists for this student
+        if hasattr(student.user, 'adminuser'):
+            return Response(
+                {'error': 'This student is already an admin user'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Create admin user from student
+        admin_user = AdminUser.objects.create(
+            user=student.user,
+            first_name=student.first_name,
+            last_name=student.last_name,
+            role=role
+        )
+    else:
+        # Create new user and admin user (for Faculty)
+        if not first_name or not last_name or not email:
+            return Response(
+                {'error': 'first_name, last_name, and email are required when creating a new user'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if user with this email already exists
+        if User.objects.filter(email=email.lower()).exists():
+            existing_user = User.objects.get(email=email.lower())
+            # Check if they already have an admin profile
+            if hasattr(existing_user, 'adminuser'):
+                return Response(
+                    {'error': 'A user with this email already exists and is already an admin user'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            # If user exists but no admin profile, create admin profile
+            user = existing_user
+        else:
+            # Create new user
+            # Generate username from email
+            username = email.split('@')[0].lower()
+            # Ensure username is unique
+            base_username = username
+            counter = 1
+            while User.objects.filter(username=username).exists():
+                username = f"{base_username}{counter}"
+                counter += 1
+            
+            # Create user with default password
+            user = User.objects.create_user(
+                username=username,
+                email=email.lower(),
+                password='changeme!',
+                first_name=first_name,
+                last_name=last_name
+            )
+        
+        # Create admin user
+        admin_user = AdminUser.objects.create(
+            user=user,
+            first_name=first_name,
+            last_name=last_name,
+            role=role
+        )
+    
+    return Response({
+        'id': admin_user.id,
+        'user_id': admin_user.user.id,
+        'username': admin_user.user.username,
+        'email': admin_user.user.email,
+        'first_name': admin_user.first_name,
+        'last_name': admin_user.last_name,
+        'role': admin_user.role,
+        'created_at': admin_user.created_at
+    }, status=status.HTTP_201_CREATED)
+
+@api_view(['PUT', 'PATCH'])
+@permission_classes([IsAuthenticated])
+def update_admin_user(request, admin_user_id):
+    """Update an admin user - only accessible to Super Admin, DAISSA, or Faculty"""
+    admin_profile = getattr(request.user, 'adminuser', None)
+    if not admin_profile or admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
+        return Response(
+            {'error': 'You do not have permission to update admin users'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    from .models import AdminUser
+    
+    try:
+        admin_user = AdminUser.objects.get(id=admin_user_id)
+    except AdminUser.DoesNotExist:
+        return Response(
+            {'error': 'Admin user not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    role = request.data.get('role')
+    if role:
+        admin_user.role = role
+        admin_user.save()
+    
+    return Response({
+        'id': admin_user.id,
+        'user_id': admin_user.user.id,
+        'username': admin_user.user.username,
+        'email': admin_user.user.email,
+        'first_name': admin_user.first_name,
+        'last_name': admin_user.last_name,
+        'role': admin_user.role,
+        'created_at': admin_user.created_at
+    })
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def delete_admin_user(request, admin_user_id):
+    """Delete an admin user - only accessible to Super Admin, DAISSA, or Faculty"""
+    admin_profile = getattr(request.user, 'adminuser', None)
+    if not admin_profile or admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
+        return Response(
+            {'error': 'You do not have permission to delete admin users'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    from .models import AdminUser
+    
+    try:
+        admin_user = AdminUser.objects.get(id=admin_user_id)
+        admin_user.delete()
+        return Response({'message': 'Admin user deleted successfully'}, status=status.HTTP_200_OK)
+    except AdminUser.DoesNotExist:
+        return Response(
+            {'error': 'Admin user not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def search_students(request):
+    """Search for students by name, email, or A-number - only accessible to Super Admin, DAISSA, or Faculty"""
+    from .models import AdminUser
+    
+    admin_profile = getattr(request.user, 'adminuser', None)
+    if not admin_profile or admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
+        return Response(
+            {'error': 'You do not have permission to search students'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    query = request.GET.get('q', '').strip()
+    
+    if not query or len(query) < 2:
+        return Response([])
+    
+    # Search by name, email, or username (which contains A-number)
+    students = Student.objects.filter(
+        Q(first_name__icontains=query) |
+        Q(last_name__icontains=query) |
+        Q(email__icontains=query) |
+        Q(user__username__icontains=query) |
+        Q(username__icontains=query)
+    ).select_related('user')[:20]  # Limit to 20 results
+    
+    students_data = []
+    for student in students:
+        # Check if user has an admin profile
+        # Django's OneToOneField raises RelatedObjectDoesNotExist when the related object doesn't exist
+        try:
+            admin_user = student.user.adminuser
+            is_admin = True
+            admin_role = admin_user.role
+        except Exception:
+            # Catch any exception (RelatedObjectDoesNotExist or AttributeError)
+            is_admin = False
+            admin_role = None
+        
+        students_data.append({
+            'id': student.id,
+            'first_name': student.first_name,
+            'last_name': student.last_name,
+            'email': student.email,
+            'a_number': student.user.username if student.user.username else '',
+            'username': student.user.username,
+            'is_admin': is_admin,
+            'admin_role': admin_role
+        })
+    
+    return Response(students_data)
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def list_organizations(request):
+    """List all organizations or create a new one - only accessible to Super Admin, DAISSA, or Faculty"""
+    from .models import Organization
+    
+    admin_profile = getattr(request.user, 'adminuser', None)
+    if not admin_profile or admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
+        return Response(
+            {'error': 'You do not have permission to manage organizations'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    if request.method == 'GET':
+        organizations = Organization.objects.all().order_by('name')
+        organizations_data = [{
+            'id': org.id,
+            'name': org.name,
+            'created_at': org.created_at,
+            'updated_at': org.updated_at
+        } for org in organizations]
+        return Response(organizations_data)
+    
+    elif request.method == 'POST':
+        name = request.data.get('name', '').strip()
+        if not name:
+            return Response(
+                {'error': 'Organization name is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if organization already exists
+        if Organization.objects.filter(name=name).exists():
+            return Response(
+                {'error': 'An organization with this name already exists'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        organization = Organization.objects.create(name=name)
+        return Response({
+            'id': organization.id,
+            'name': organization.name,
+            'created_at': organization.created_at,
+            'updated_at': organization.updated_at
+        }, status=status.HTTP_201_CREATED)
+
+@api_view(['PUT', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def manage_organization(request, organization_id):
+    """Update or delete an organization - only accessible to Super Admin, DAISSA, or Faculty"""
+    from .models import Organization
+    
+    admin_profile = getattr(request.user, 'adminuser', None)
+    if not admin_profile or admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
+        return Response(
+            {'error': 'You do not have permission to manage organizations'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    try:
+        organization = Organization.objects.get(id=organization_id)
+    except Organization.DoesNotExist:
+        return Response(
+            {'error': 'Organization not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    if request.method in ['PUT', 'PATCH']:
+        name = request.data.get('name', '').strip()
+        if not name:
+            return Response(
+                {'error': 'Organization name is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if another organization with this name exists
+        if Organization.objects.filter(name=name).exclude(id=organization_id).exists():
+            return Response(
+                {'error': 'An organization with this name already exists'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        organization.name = name
+        organization.save()
+        
+        return Response({
+            'id': organization.id,
+            'name': organization.name,
+            'created_at': organization.created_at,
+            'updated_at': organization.updated_at
+        })
+    
+    elif request.method == 'DELETE':
+        # Check if organization is being used by any admin users
+        from .models import AdminUser
+        admin_users_with_role = AdminUser.objects.filter(role=organization.name).count()
+        if admin_users_with_role > 0:
+            return Response(
+                {'error': f'Cannot delete organization. It is currently assigned to {admin_users_with_role} admin user(s).'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        organization.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def attendance_overview(request):
     # Check if user is admin and filter by organization
     # Super Admin, DAISSA, and Faculty can see all events
@@ -597,7 +1081,12 @@ def attendance_overview(request):
     
     # Apply organization filter if admin
     if admin_profile and admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
-        attendance_query = attendance_query.filter(event__organization=admin_profile.role)
+        from .models import EventOrganization
+        # Include attendances for events where organization is primary OR secondary
+        attendance_query = attendance_query.filter(
+            Q(event__organization=admin_profile.role) |
+            Q(event__event_organizations__organization=admin_profile.role)
+        ).distinct()
     
     attendance_data = attendance_query.annotate(
         date=models.functions.TruncMonth('checked_in_at')

@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import User
-from .models import Student, Event, Attendance, Semester, Professor, Class, TeachingAssistant, AdminUser
+from .models import Student, Event, Attendance, Semester, Professor, Class, TeachingAssistant, AdminUser, EventOrganization, Organization
 
 @admin.register(Student)
 class StudentAdmin(admin.ModelAdmin):
@@ -45,12 +45,26 @@ class TeachingAssistantAdmin(admin.ModelAdmin):
     list_filter = ('class_assigned__semester', 'class_assigned__professor')
     search_fields = ('id', 'student__id', 'class_assigned__id')
 
+@admin.register(EventOrganization)
+class EventOrganizationAdmin(admin.ModelAdmin):
+    list_display = ('id', 'event', 'organization', 'created_at')
+    list_filter = ('organization', 'created_at')
+    search_fields = ('id', 'event__name', 'organization')
+    list_editable = ('organization',)
+
 @admin.register(AdminUser)
 class AdminUserAdmin(admin.ModelAdmin):
     list_display = ('id', 'first_name', 'last_name', 'role', 'user', 'created_at')
     list_filter = ('role', 'created_at')
     search_fields = ('id', 'first_name', 'last_name', 'role', 'user__username', 'user__email')
     list_editable = ('role',)
+
+@admin.register(Organization)
+class OrganizationAdmin(admin.ModelAdmin):
+    list_display = ('id', 'name', 'created_at', 'updated_at')
+    list_filter = ('created_at',)
+    search_fields = ('id', 'name')
+    list_editable = ('name',)
 
 # Custom User Admin to show email field prominently
 class UserAdmin(BaseUserAdmin):

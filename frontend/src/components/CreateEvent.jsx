@@ -215,10 +215,31 @@ function CreateEvent({ onCreateEvent, initialData }) {
   const [isCustomEventType, setIsCustomEventType] = useState(false)
   const [customEventType, setCustomEventType] = useState("")
   const { user } = useAuth()
+  
+  // Check if user is a club leader (not Super Admin, DAISSA, or Faculty)
+  const isClubLeader = user?.admin_profile?.role && 
+    !['Super Admin', 'DAISSA', 'Faculty'].includes(user.admin_profile.role)
 
   useEffect(() => {
     fetchDropdownData()
   }, [])
+
+  // Auto-select organization for club leaders when organizations are loaded
+  useEffect(() => {
+    if (!initialData && organizations.length > 0 && user?.admin_profile?.role) {
+      const userRole = user.admin_profile.role
+      // If user is a club leader (not Super Admin, DAISSA, or Faculty), pre-select their organization
+      const userOrg = organizations.find(org => org.name === userRole)
+      if (userOrg && !['Super Admin', 'DAISSA', 'Faculty'].includes(userRole)) {
+        setEventData(prev => ({
+          ...prev,
+          organization: userRole
+        }))
+        // Don't add to multi-select since it's already the primary organization
+        setSelectedOrganizations([])
+      }
+    }
+  }, [organizations, user, initialData])
 
   useEffect(() => {
     if (initialData && organizations.length > 0 && eventTypes.length > 0) {
@@ -304,11 +325,11 @@ function CreateEvent({ onCreateEvent, initialData }) {
       const endOfYear = getEndOfYearInMountainTime(eventData.date)
       recurrenceEndDate = mountainTimeToISO(endOfYear)
     }
-    
+
     onCreateEvent({
       ...eventData,
       date: mountainTimeToISO(eventData.date),
-      recurrence_end_date: recurrenceEndDate,
+      recurrence_end_date: recurrenceEndDate
     })
     if (!initialData) {
       setEventData({ 
@@ -334,19 +355,27 @@ function CreateEvent({ onCreateEvent, initialData }) {
         <Select
           value={eventData.organization}
           onValueChange={(value) => setEventData({ ...eventData, organization: value })}
+          disabled={isClubLeader}
         >
           <SelectTrigger>
             <SelectValue placeholder="Select an organization" />
           </SelectTrigger>
           <SelectContent>
             {organizations.map((org, index) => (
-              <SelectItem key={`org-${index}`} value={org}>
-                {org}
+              <SelectItem key={`org-${index}`} value={org.name}>
+                {org.name}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
+        {isClubLeader && (
+          <p className="text-xs text-gray-500">
+            You can only create events for your organization ({user?.admin_profile?.role})
+          </p>
+        )}
       </div>
+
+      {/* Multi-organization selection removed */}
 
       <div className="space-y-2">
         <label className="text-sm font-medium">Event Type</label>
