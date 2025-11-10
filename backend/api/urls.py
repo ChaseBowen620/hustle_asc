@@ -13,7 +13,14 @@ from .views import (
     total_students,
     participating_students,
     student_points,
-    attendance_overview
+    attendance_overview,
+    list_admin_users,
+    create_admin_user,
+    update_admin_user,
+    delete_admin_user,
+    search_students,
+    list_organizations,
+    manage_organization
 )
 from .debug_webhook_views import debug_webhook, debug_webhook_status
 from .onetap_webhook_handler import onetap_webhook_handler, onetap_webhook_status
@@ -35,6 +42,13 @@ urlpatterns = [
     path('attendance/overview/', attendance_overview, name='attendance-overview'),
     path('user/me/', get_user_details, name='user-details'),
     path('user/change-password/', change_password, name='change-password'),
+    path('admin-users/', list_admin_users, name='list-admin-users'),
+    path('admin-users/create/', create_admin_user, name='create-admin-user'),
+    path('admin-users/<int:admin_user_id>/update/', update_admin_user, name='update-admin-user'),
+    path('admin-users/<int:admin_user_id>/delete/', delete_admin_user, name='delete-admin-user'),
+    path('students/search/', search_students, name='search-students'),
+    path('organizations/', list_organizations, name='list-organizations'),
+    path('organizations/<int:organization_id>/', manage_organization, name='manage-organization'),
     path('', include(router.urls)),
     
     # Debug webhook endpoint (temporary - for diagnosing OneTap issues)
