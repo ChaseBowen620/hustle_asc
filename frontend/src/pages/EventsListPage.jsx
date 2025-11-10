@@ -84,7 +84,7 @@ function EventsListPage() {
 
   const handleCreateEvent = async (newEvent) => {
     try {
-      const response = await axios.post(`${API_URL}/api/events/`, {
+      const requestData = {
         name: newEvent.name,
         description: newEvent.description || "",
         date: newEvent.date,
@@ -94,11 +94,36 @@ function EventsListPage() {
         is_recurring: newEvent.is_recurring || false,
         recurrence_type: newEvent.recurrence_type || 'none',
         recurrence_end_date: newEvent.recurrence_end_date || null,
-      }, {
+        organizations: newEvent.organizations || [], // Include secondary organizations
+      }
+
+      // Debug: Log what's being sent to the API
+      console.log('📤 [API Request Debug]')
+      console.log('POST /api/events/')
+      console.log('Request payload:', requestData)
+      console.log('Secondary organizations (IDs):', requestData.organizations)
+      console.log('Number of secondary orgs:', requestData.organizations.length)
+
+      const response = await axios.post(`${API_URL}/api/events/`, requestData, {
         headers: {
           'Authorization': `Bearer ${user?.token}`
         }
       })
+
+      // Debug: Log the response
+      console.log('✅ [API Response Debug]')
+      console.log('Event created with ID:', response.data.id)
+      console.log('Event name:', response.data.name)
+      console.log('Primary organization:', response.data.organization)
+      if (response.data.event_organizations && response.data.event_organizations.length > 0) {
+        console.log('📋 EventOrganization entries created:')
+        response.data.event_organizations.forEach((eo, index) => {
+          console.log(`  ${index + 1}. EventOrganization ID: ${eo.id}, Organization: ${eo.organization_name || eo.organization} (ID: ${eo.organization_id || eo.organization})`)
+        })
+      } else {
+        console.log('⚠️ No EventOrganization entries in response (may need to refetch)')
+      }
+
       // Refetch events to get all recurring instances and updated data
       await fetchEvents()
       setShowCreateDialog(false)
@@ -109,7 +134,7 @@ function EventsListPage() {
 
   const handleEditEvent = async (updatedEvent) => {
     try {
-      const response = await axios.put(`${API_URL}/api/events/${editingEvent.id}/`, {
+      const requestData = {
         name: updatedEvent.name,
         description: updatedEvent.description || "",
         date: updatedEvent.date,
@@ -119,11 +144,35 @@ function EventsListPage() {
         is_recurring: updatedEvent.is_recurring || false,
         recurrence_type: updatedEvent.recurrence_type || 'none',
         recurrence_end_date: updatedEvent.recurrence_end_date || null,
-      }, {
+        organizations: updatedEvent.organizations || [], // Include secondary organizations
+      }
+
+      // Debug: Log what's being sent to the API
+      console.log('📤 [API Update Request Debug]')
+      console.log(`PUT /api/events/${editingEvent.id}/`)
+      console.log('Request payload:', requestData)
+      console.log('Secondary organizations (IDs):', requestData.organizations)
+      console.log('Number of secondary orgs:', requestData.organizations.length)
+
+      const response = await axios.put(`${API_URL}/api/events/${editingEvent.id}/`, requestData, {
         headers: {
           'Authorization': `Bearer ${user?.token}`
         }
       })
+
+      // Debug: Log the response
+      console.log('✅ [API Update Response Debug]')
+      console.log('Event updated with ID:', response.data.id)
+      console.log('Event name:', response.data.name)
+      console.log('Primary organization:', response.data.organization)
+      if (response.data.event_organizations && response.data.event_organizations.length > 0) {
+        console.log('📋 EventOrganization entries after update:')
+        response.data.event_organizations.forEach((eo, index) => {
+          console.log(`  ${index + 1}. EventOrganization ID: ${eo.id}, Organization: ${eo.organization_name || eo.organization} (ID: ${eo.organization_id || eo.organization})`)
+        })
+      } else {
+        console.log('⚠️ No EventOrganization entries in response (may need to refetch)')
+      }
       // Refetch events to get all recurring instances and updated data
       await fetchEvents()
       setEditingEvent(null)

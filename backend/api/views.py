@@ -45,19 +45,22 @@ class EventViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         """Filter events by organization based on admin role"""
-        from .models import EventOrganization
+        from .models import EventOrganization, Organization
         
         queryset = Event.objects.all()
         
-        # Check if user is admin and filter by organization
+        # Check if user is authenticated and is admin, then filter by organization
         # Super Admin, DAISSA, and Faculty can see all events
-        admin_profile = getattr(self.request.user, 'adminuser', None)
-        if admin_profile and admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
-            # Include events where organization is primary OR where organization is secondary
-            queryset = queryset.filter(
-                Q(organization=admin_profile.role) |
-                Q(event_organizations__organization=admin_profile.role)
-            ).distinct()
+        if self.request.user and self.request.user.is_authenticated:
+            admin_profile = getattr(self.request.user, 'adminuser', None)
+            if admin_profile and admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
+                # Include events where organization is primary OR where organization is secondary
+                # For primary: organization is a CharField, so match by name
+                # For secondary: event_organizations__organization is a ForeignKey, so match by name through the relationship
+                queryset = queryset.filter(
+                    Q(organization=admin_profile.role) |
+                    Q(event_organizations__organization__name=admin_profile.role)
+                ).distinct()
         
         return queryset
 
@@ -73,13 +76,15 @@ class EventViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(past_events, many=True)
         return Response(serializer.data)
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get'], permission_classes=[AllowAny])
     def types(self, request):
         """Get unique event types from filtered events"""
-        unique_types = self.get_queryset().values_list('event_type', flat=True).distinct().order_by('event_type')
+        # Get queryset, handling unauthenticated users
+        queryset = self.get_queryset()
+        unique_types = queryset.values_list('event_type', flat=True).distinct().order_by('event_type')
         return Response(list(unique_types))
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get'], permission_classes=[AllowAny])
     def organizations(self, request):
         """
         Get all organizations from the Organization table.
@@ -207,7 +212,7 @@ class AttendanceViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         """Filter attendance by organization based on admin role"""
-        from .models import EventOrganization
+        from .models import EventOrganization, Organization
         
         queryset = Attendance.objects.select_related('student', 'event').all()
         
@@ -216,9 +221,11 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         admin_profile = getattr(self.request.user, 'adminuser', None)
         if admin_profile and admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
             # Include attendances for events where organization is primary OR secondary
+            # For primary: event__organization is a CharField, so match by name
+            # For secondary: event__event_organizations__organization is a ForeignKey, so match by name through the relationship
             queryset = queryset.filter(
                 Q(event__organization=admin_profile.role) |
-                Q(event__event_organizations__organization=admin_profile.role)
+                Q(event__event_organizations__organization__name=admin_profile.role)
             ).distinct()
         
         return queryset
@@ -482,7 +489,7 @@ def total_students(request):
         from .models import EventOrganization
         count = Student.objects.filter(
             Q(attendances__event__organization=admin_profile.role) |
-            Q(attendances__event__event_organizations__organization=admin_profile.role)
+            Q(attendances__event__event_organizations__organization__name=admin_profile.role)
         ).distinct().count()
     else:
         # Super Admin, DAISSA, Faculty, or non-admin sees all students
@@ -507,7 +514,7 @@ def participating_students(request):
         # Include students who attended events where organization is primary OR secondary
         query = query.filter(
             Q(attendances__event__organization=admin_profile.role) |
-            Q(attendances__event__event_organizations__organization=admin_profile.role)
+            Q(attendances__event__event_organizations__organization__name=admin_profile.role)
         )
     
     # Get current date
@@ -566,13 +573,13 @@ def student_points(request):
                 # Include events where organization is primary OR secondary
                 students = students.filter(
                     Q(attendances__event__organization=organization_filter) |
-                    Q(attendances__event__event_organizations__organization=organization_filter)
+                    Q(attendances__event__event_organizations__organization__name=organization_filter)
                 ).distinct()
         else:
             # Other admins are filtered to their own organization (primary or secondary)
             students = students.filter(
                 Q(attendances__event__organization=admin_profile.role) |
-                Q(attendances__event__event_organizations__organization=admin_profile.role)
+                Q(attendances__event__event_organizations__organization__name=admin_profile.role)
             ).distinct()
     
     # Get current date
@@ -598,7 +605,7 @@ def student_points(request):
                     'attendances',
                     filter=models.Q(
                         Q(attendances__event__organization=admin_profile.role) |
-                        Q(attendances__event__event_organizations__organization=admin_profile.role),
+                        Q(attendances__event__event_organizations__organization__name=admin_profile.role),
                         attendances__event__date__gte=semester_start,
                         attendances__event__date__lt=semester_end
                     )
@@ -611,7 +618,7 @@ def student_points(request):
                     'attendances',
                     filter=models.Q(
                         Q(attendances__event__organization=organization_filter) |
-                        Q(attendances__event__event_organizations__organization=organization_filter),
+                        Q(attendances__event__event_organizations__organization__name=organization_filter),
                         attendances__event__date__gte=semester_start,
                         attendances__event__date__lt=semester_end
                     )
@@ -644,7 +651,7 @@ def student_points(request):
                     'attendances',
                     filter=models.Q(
                         Q(attendances__event__organization=admin_profile.role) |
-                        Q(attendances__event__event_organizations__organization=admin_profile.role),
+                        Q(attendances__event__event_organizations__organization__name=admin_profile.role),
                         attendances__event__date__gte=academic_year_start
                     )
                 )
@@ -656,7 +663,7 @@ def student_points(request):
                     'attendances',
                     filter=models.Q(
                         Q(attendances__event__organization=organization_filter) |
-                        Q(attendances__event__event_organizations__organization=organization_filter),
+                        Q(attendances__event__event_organizations__organization__name=organization_filter),
                         attendances__event__date__gte=academic_year_start
                     )
                 )
@@ -679,7 +686,7 @@ def student_points(request):
                     'attendances',
                     filter=models.Q(
                         Q(attendances__event__organization=admin_profile.role) |
-                        Q(attendances__event__event_organizations__organization=admin_profile.role)
+                        Q(attendances__event__event_organizations__organization__name=admin_profile.role)
                     )
                 )
             )
@@ -690,7 +697,7 @@ def student_points(request):
                     'attendances',
                     filter=models.Q(
                         Q(attendances__event__organization=organization_filter) |
-                        Q(attendances__event__event_organizations__organization=organization_filter)
+                        Q(attendances__event__event_organizations__organization__name=organization_filter)
                     )
                 )
             )
@@ -1085,7 +1092,7 @@ def attendance_overview(request):
         # Include attendances for events where organization is primary OR secondary
         attendance_query = attendance_query.filter(
             Q(event__organization=admin_profile.role) |
-            Q(event__event_organizations__organization=admin_profile.role)
+            Q(event__event_organizations__organization__name=admin_profile.role)
         ).distinct()
     
     attendance_data = attendance_query.annotate(

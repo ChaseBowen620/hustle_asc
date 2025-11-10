@@ -214,6 +214,7 @@ function CreateEvent({ onCreateEvent, initialData }) {
   const [eventTypes, setEventTypes] = useState([])
   const [isCustomEventType, setIsCustomEventType] = useState(false)
   const [customEventType, setCustomEventType] = useState("")
+  const [selectedOrganizations, setSelectedOrganizations] = useState([]) // Array of organization IDs
   const { user } = useAuth()
   
   // Check if user is a club leader (not Super Admin, DAISSA, or Faculty)
@@ -263,6 +264,24 @@ function CreateEvent({ onCreateEvent, initialData }) {
       if (isCustomType) {
         setIsCustomEventType(true)
         setCustomEventType(initialData.event_type)
+      }
+
+      // Load existing secondary organizations from event_organizations
+      if (initialData.event_organizations && initialData.event_organizations.length > 0) {
+        const orgIds = initialData.event_organizations
+          .map(eo => eo.organization_id || eo.organization?.id)
+          .filter(id => id !== undefined)
+        setSelectedOrganizations(orgIds)
+        
+        // Debug: Log existing EventOrganization entries
+        console.log('📋 [Event Edit Debug] Loading existing EventOrganization entries:')
+        initialData.event_organizations.forEach((eo, index) => {
+          console.log(`  ${index + 1}. EventOrganization ID: ${eo.id}, Organization: ${eo.organization_name || eo.organization} (ID: ${eo.organization_id || eo.organization?.id})`)
+        })
+        console.log('Loaded organization IDs:', orgIds)
+      } else {
+        setSelectedOrganizations([])
+        console.log('📋 [Event Edit Debug] No existing EventOrganization entries found')
       }
     }
   }, [initialData, organizations, eventTypes])
@@ -326,10 +345,32 @@ function CreateEvent({ onCreateEvent, initialData }) {
       recurrenceEndDate = mountainTimeToISO(endOfYear)
     }
 
+    // Get primary organization ID if it exists
+    const primaryOrg = organizations.find(org => (org.name || org) === eventData.organization)
+    const primaryOrgId = primaryOrg?.id
+
+    // Filter out primary organization from selected organizations
+    const secondaryOrgIds = selectedOrganizations.filter(orgId => orgId !== primaryOrgId)
+
+    // Debug: Log what will be sent to event_organizations table
+    console.log('🔍 [Event Creation Debug]')
+    console.log('Primary Organization:', eventData.organization, '(ID:', primaryOrgId, ')')
+    console.log('Selected Organizations (all):', selectedOrganizations.map(id => {
+      const org = organizations.find(o => (o.id || o) === id)
+      return { id, name: org?.name || org }
+    }))
+    console.log('Secondary Organization IDs (filtered):', secondaryOrgIds)
+    console.log('Secondary Organizations (names):', secondaryOrgIds.map(id => {
+      const org = organizations.find(o => (o.id || o) === id)
+      return org?.name || org
+    }))
+    console.log('Will create EventOrganization entries for:', secondaryOrgIds.length, 'organizations')
+
     onCreateEvent({
       ...eventData,
       date: mountainTimeToISO(eventData.date),
-      recurrence_end_date: recurrenceEndDate
+      recurrence_end_date: recurrenceEndDate,
+      organizations: secondaryOrgIds // Send organization IDs, not names
     })
     if (!initialData) {
       setEventData({ 
@@ -375,7 +416,56 @@ function CreateEvent({ onCreateEvent, initialData }) {
         )}
       </div>
 
-      {/* Multi-organization selection removed */}
+      {/* Additional Organizations (Secondary) */}
+      <div className="space-y-2">
+        <label className="text-sm font-medium">Additional Organizations (for cross-club events)</label>
+        <div className="border rounded-md p-3 max-h-48 overflow-y-auto">
+          {organizations.length === 0 ? (
+            <p className="text-sm text-gray-500">Loading organizations...</p>
+          ) : (
+            <div className="space-y-2">
+              {organizations.map((org, index) => {
+                const orgId = org.id || org
+                const orgName = org.name || org
+                const isPrimary = (orgName === eventData.organization)
+                const isSelected = selectedOrganizations.includes(orgId)
+                const isDisabled = isPrimary || (isClubLeader && orgName === user?.admin_profile?.role)
+
+                return (
+                  <div key={`org-${index}`} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`org-checkbox-${index}`}
+                      checked={isSelected}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setSelectedOrganizations([...selectedOrganizations, orgId])
+                        } else {
+                          setSelectedOrganizations(selectedOrganizations.filter(id => id !== orgId))
+                        }
+                      }}
+                      disabled={isDisabled}
+                    />
+                    <Label 
+                      htmlFor={`org-checkbox-${index}`}
+                      className={`text-sm font-normal ${isDisabled ? 'text-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}
+                    >
+                      {orgName} {isPrimary && '(Primary)'}
+                    </Label>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+        {selectedOrganizations.length > 0 && (
+          <p className="text-xs text-gray-500">
+            Selected: {selectedOrganizations.map(id => {
+              const org = organizations.find(o => (o.id || o) === id)
+              return org?.name || org
+            }).join(', ')}
+          </p>
+        )}
+      </div>
 
       <div className="space-y-2">
         <label className="text-sm font-medium">Event Type</label>

@@ -47,10 +47,15 @@ class TeachingAssistantAdmin(admin.ModelAdmin):
 
 @admin.register(EventOrganization)
 class EventOrganizationAdmin(admin.ModelAdmin):
-    list_display = ('id', 'event', 'organization', 'created_at')
+    list_display = ('id', 'event_id', 'organization', 'created_at')
     list_filter = ('organization', 'created_at')
-    search_fields = ('id', 'event__name', 'organization')
+    search_fields = ('id', 'event__id', 'event__name', 'organization__name')
     list_editable = ('organization',)
+    
+    def event_id(self, obj):
+        """Display the Event ID (primary key) instead of event name"""
+        return obj.event.id
+    event_id.short_description = 'Event ID'
 
 @admin.register(AdminUser)
 class AdminUserAdmin(admin.ModelAdmin):

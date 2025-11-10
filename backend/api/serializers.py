@@ -19,18 +19,21 @@ class StudentSerializer(serializers.ModelSerializer):
         }
 
 class EventOrganizationSerializer(serializers.ModelSerializer):
+    organization_id = serializers.IntegerField(source='organization.id', read_only=True)
+    organization_name = serializers.CharField(source='organization.name', read_only=True)
+    
     class Meta:
         model = EventOrganization
-        fields = ['id', 'organization', 'created_at']
+        fields = ['id', 'organization', 'organization_id', 'organization_name', 'created_at']
 
 class EventSerializer(serializers.ModelSerializer):
     has_passed = serializers.BooleanField(read_only=True)
     event_organizations = EventOrganizationSerializer(many=True, read_only=True)
     organizations = serializers.ListField(
-        child=serializers.CharField(),
+        child=serializers.IntegerField(),
         write_only=True,
         required=False,
-        help_text="List of organization names associated with this event"
+        help_text="List of organization IDs (from Organization table) for secondary organizations"
     )
     
     class Meta:
@@ -60,46 +63,71 @@ class EventSerializer(serializers.ModelSerializer):
         return value
     
     def validate_organizations(self, value):
-        """Validate that all organizations in the list exist in AdminUser roles"""
-        from .models import AdminUser
+        """Validate that all organization IDs exist in the Organization table"""
+        from .models import Organization
         if not value:
             return value
         
-        # Check if all organizations exist as AdminUser roles (excluding Faculty and Super Admin)
-        valid_organizations = set(AdminUser.objects.exclude(
-            role__in=['Faculty', 'Super Admin']
-        ).values_list('role', flat=True).distinct())
+        # Check if all organization IDs exist in the Organization table
+        valid_org_ids = set(Organization.objects.values_list('id', flat=True))
         
-        invalid_orgs = [org for org in value if org not in valid_organizations]
+        invalid_orgs = [org_id for org_id in value if org_id not in valid_org_ids]
         if invalid_orgs:
             raise serializers.ValidationError(
-                f"Invalid organizations: {', '.join(invalid_orgs)}. Please select from existing AdminUser roles."
+                f"Invalid organization IDs: {', '.join(map(str, invalid_orgs))}. Please select from existing organizations."
             )
         
         return value
     
     def create(self, validated_data):
+        from .models import Organization
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        
         organizations = validated_data.pop('organizations', [])
         event = Event.objects.create(**validated_data)
         
-        # Create EventOrganization entries
+        # Debug: Log what's being created
+        logger.info(f"🔍 [EventOrganization Debug] Creating event {event.id} ({event.name})")
+        logger.info(f"   Primary organization: {validated_data.get('organization')}")
+        logger.info(f"   Secondary organization IDs received: {organizations}")
+        
+        # Create EventOrganization entries for secondary organizations
+        created_entries = []
         if organizations:
-            for org in organizations:
-                EventOrganization.objects.get_or_create(
-                    event=event,
-                    organization=org
-                )
-        else:
-            # If no organizations provided, use the main organization field
-            if validated_data.get('organization'):
-                EventOrganization.objects.get_or_create(
-                    event=event,
-                    organization=validated_data['organization']
-                )
+            for org_id in organizations:
+                try:
+                    org = Organization.objects.get(id=org_id)
+                    # Don't add the primary organization as a secondary
+                    if org.name != validated_data.get('organization'):
+                        eo, created = EventOrganization.objects.get_or_create(
+                            event=event,
+                            organization=org
+                        )
+                        created_entries.append({
+                            'id': eo.id,
+                            'event_id': event.id,
+                            'organization_id': org.id,
+                            'organization_name': org.name,
+                            'created': created
+                        })
+                        logger.info(f"   ✅ Created EventOrganization: ID={eo.id}, Event={event.id}, Org={org.name} (ID={org.id})")
+                    else:
+                        logger.info(f"   ⏭️  Skipped {org.name} (same as primary organization)")
+                except Organization.DoesNotExist:
+                    logger.warning(f"   ❌ Organization ID {org_id} not found, skipping")
+        
+        logger.info(f"   📊 Total EventOrganization entries created: {len(created_entries)}")
         
         return event
     
     def update(self, instance, validated_data):
+        from .models import Organization
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        
         organizations = validated_data.pop('organizations', None)
         
         # Update event fields
@@ -109,23 +137,39 @@ class EventSerializer(serializers.ModelSerializer):
         
         # Update event organizations if provided
         if organizations is not None:
-            # Delete existing event organizations
-            EventOrganization.objects.filter(event=instance).delete()
+            logger.info(f"🔍 [EventOrganization Update Debug] Updating event {instance.id} ({instance.name})")
+            logger.info(f"   Primary organization: {validated_data.get('organization') or instance.organization}")
+            logger.info(f"   Secondary organization IDs received: {organizations}")
             
-            # Create new event organizations
-            for org in organizations:
-                EventOrganization.objects.create(
-                    event=instance,
-                    organization=org
-                )
-        elif validated_data.get('organization'):
-            # If organizations not provided but organization field is updated,
-            # ensure at least one EventOrganization exists
-            if not EventOrganization.objects.filter(event=instance).exists():
-                EventOrganization.objects.create(
-                    event=instance,
-                    organization=validated_data['organization']
-                )
+            # Delete existing event organizations
+            deleted_count = EventOrganization.objects.filter(event=instance).delete()[0]
+            logger.info(f"   🗑️  Deleted {deleted_count} existing EventOrganization entries")
+            
+            # Create new event organizations (secondary organizations only)
+            primary_org_name = validated_data.get('organization') or instance.organization
+            created_entries = []
+            for org_id in organizations:
+                try:
+                    org = Organization.objects.get(id=org_id)
+                    # Don't add the primary organization as a secondary
+                    if org.name != primary_org_name:
+                        eo = EventOrganization.objects.create(
+                            event=instance,
+                            organization=org
+                        )
+                        created_entries.append({
+                            'id': eo.id,
+                            'event_id': instance.id,
+                            'organization_id': org.id,
+                            'organization_name': org.name
+                        })
+                        logger.info(f"   ✅ Created EventOrganization: ID={eo.id}, Event={instance.id}, Org={org.name} (ID={org.id})")
+                    else:
+                        logger.info(f"   ⏭️  Skipped {org.name} (same as primary organization)")
+                except Organization.DoesNotExist:
+                    logger.warning(f"   ❌ Organization ID {org_id} not found, skipping")
+            
+            logger.info(f"   📊 Total EventOrganization entries created: {len(created_entries)}")
         
         return instance
 
