@@ -5,10 +5,7 @@ import { useAuth } from "@/hooks/useAuth"
 function Navbar() {
   const location = useLocation()
   const navigate = useNavigate()
-  const { user, isAdmin, logout } = useAuth()
-  const userIsAdmin = isAdmin(user)
-
-  const dashboardPath = userIsAdmin ? "/admin/dashboard" : "/dashboard"
+  const { logout } = useAuth()
 
   const linkClass = (path) =>
     `inline-flex items-center px-1 pt-1 text-sm font-medium ${
@@ -32,21 +29,11 @@ function Navbar() {
               alt="Logo"
               className="h-12 w-12 brightness-0 invert"
             />
-            <Link to={dashboardPath} className={linkClass(dashboardPath)}>
+            <Link to="/admin/dashboard" className={linkClass("/admin/dashboard")}>
               Dashboard
             </Link>
-            {userIsAdmin && (
-              <Link to="/events" className={linkClass("/events")}>
-                Events List
-              </Link>
-            )}
-            {userIsAdmin && (
-              <Link to="/check-in" className={linkClass("/check-in")}>
-                Check In
-              </Link>
-            )}
-            <Link to="/settings" className={linkClass("/settings")}>
-              Settings
+            <Link to="/events" className={linkClass("/events")}>
+              Events List
             </Link>
           </div>
           <div>

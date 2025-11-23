@@ -12,7 +12,6 @@ class Student(models.Model):
     )
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
-    email = models.EmailField(unique=True)
     username = models.CharField(max_length=150, blank=True, help_text="Username from the user account")
     created_at = models.DateTimeField(auto_now_add=True)
     cached_attendance_count = models.IntegerField(default=0)
@@ -41,18 +40,9 @@ class Student(models.Model):
 @receiver(post_save, sender=User)
 def create_student_profile(sender, instance, created, **kwargs):
     if created and not hasattr(instance, 'student'):
-        # Extract username from email if email is provided
-        if instance.email and '@usu.edu' in instance.email:
-            # Extract student ID from email (e.g., a02484125@usu.edu -> a02484125)
-            username = instance.email.split('@')[0]
-            # Update the user's username to match the student ID
-            instance.username = username
-            instance.save(update_fields=['username'])
-        
         Student.objects.create(
             user=instance,
             first_name=instance.first_name or '',
             last_name=instance.last_name or '',
-            email=instance.email,
             username=instance.username
         )

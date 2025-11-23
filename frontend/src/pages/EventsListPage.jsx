@@ -1,9 +1,7 @@
 import { useState, useEffect } from "react"
 import axios from "axios"
-import { useAuth } from "@/hooks/useAuth"
 import { format } from "date-fns"
 import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
 import {
   Table,
   TableBody,
@@ -13,55 +11,31 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs"
-import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
-  DialogFooter,
 } from "@/components/ui/dialog"
-import { Search, MoreVertical, ClipboardList } from "lucide-react"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import CreateEvent from "@/components/CreateEvent"
+import { Search, ClipboardList } from "lucide-react"
 import { API_URL } from '@/config/api'
 
 function EventsListPage() {
   const [events, setEvents] = useState([])
   const [searchTerm, setSearchTerm] = useState("")
-  const [showCreateDialog, setShowCreateDialog] = useState(false)
-  const [editingEvent, setEditingEvent] = useState(null)
   const [selectedEvent, setSelectedEvent] = useState(null)
   const [showAttendees, setShowAttendees] = useState(false)
-  const [activeTab, setActiveTab] = useState("upcoming")
-  const { user } = useAuth()
 
   useEffect(() => {
     fetchEvents()
   }, [])
 
+
   const fetchEvents = async () => {
     try {
-      const authHeaders = {
-        headers: {
-          'Authorization': `Bearer ${user?.token}`
-        }
-      }
-      
       const [eventsRes, attendanceRes] = await Promise.all([
-        axios.get(`${API_URL}/api/events/`, authHeaders),
-        axios.get(`${API_URL}/api/attendance/`, authHeaders)
+        axios.get(`${API_URL}/api/events/`),
+        axios.get(`${API_URL}/api/attendance/`)
       ])
 
       // Group attendance by event
@@ -82,151 +56,7 @@ function EventsListPage() {
     }
   }
 
-  const handleCreateEvent = async (newEvent) => {
-    try {
-      const requestData = {
-        name: newEvent.name,
-        description: newEvent.description || "",
-        date: newEvent.date,
-        location: newEvent.location,
-        organization: newEvent.organization,
-        event_type: newEvent.event_type,
-        is_recurring: newEvent.is_recurring || false,
-        recurrence_type: newEvent.recurrence_type || 'none',
-        recurrence_end_date: newEvent.recurrence_end_date || null,
-        organizations: newEvent.organizations || [], // Include secondary organizations
-      }
 
-      // Debug: Log what's being sent to the API
-      console.log('📤 [API Request Debug]')
-      console.log('POST /api/events/')
-      console.log('Request payload:', requestData)
-      console.log('Secondary organizations (IDs):', requestData.organizations)
-      console.log('Number of secondary orgs:', requestData.organizations.length)
-
-      const response = await axios.post(`${API_URL}/api/events/`, requestData, {
-        headers: {
-          'Authorization': `Bearer ${user?.token}`
-        }
-      })
-
-      // Debug: Log the response
-      console.log('✅ [API Response Debug]')
-      console.log('Event created with ID:', response.data.id)
-      console.log('Event name:', response.data.name)
-      console.log('Primary organization:', response.data.organization)
-      if (response.data.event_organizations && response.data.event_organizations.length > 0) {
-        console.log('📋 EventOrganization entries created:')
-        response.data.event_organizations.forEach((eo, index) => {
-          console.log(`  ${index + 1}. EventOrganization ID: ${eo.id}, Organization: ${eo.organization_name || eo.organization} (ID: ${eo.organization_id || eo.organization})`)
-        })
-      } else {
-        console.log('⚠️ No EventOrganization entries in response (may need to refetch)')
-      }
-
-      // Refetch events to get all recurring instances and updated data
-      await fetchEvents()
-      setShowCreateDialog(false)
-    } catch (error) {
-      console.error('Error creating event:', error)
-    }
-  }
-
-  const handleEditEvent = async (updatedEvent) => {
-    try {
-      const requestData = {
-        name: updatedEvent.name,
-        description: updatedEvent.description || "",
-        date: updatedEvent.date,
-        location: updatedEvent.location,
-        organization: updatedEvent.organization,
-        event_type: updatedEvent.event_type,
-        is_recurring: updatedEvent.is_recurring || false,
-        recurrence_type: updatedEvent.recurrence_type || 'none',
-        recurrence_end_date: updatedEvent.recurrence_end_date || null,
-        organizations: updatedEvent.organizations || [], // Include secondary organizations
-      }
-
-      // Debug: Log what's being sent to the API
-      console.log('📤 [API Update Request Debug]')
-      console.log(`PUT /api/events/${editingEvent.id}/`)
-      console.log('Request payload:', requestData)
-      console.log('Secondary organizations (IDs):', requestData.organizations)
-      console.log('Number of secondary orgs:', requestData.organizations.length)
-
-      const response = await axios.put(`${API_URL}/api/events/${editingEvent.id}/`, requestData, {
-        headers: {
-          'Authorization': `Bearer ${user?.token}`
-        }
-      })
-
-      // Debug: Log the response
-      console.log('✅ [API Update Response Debug]')
-      console.log('Event updated with ID:', response.data.id)
-      console.log('Event name:', response.data.name)
-      console.log('Primary organization:', response.data.organization)
-      if (response.data.event_organizations && response.data.event_organizations.length > 0) {
-        console.log('📋 EventOrganization entries after update:')
-        response.data.event_organizations.forEach((eo, index) => {
-          console.log(`  ${index + 1}. EventOrganization ID: ${eo.id}, Organization: ${eo.organization_name || eo.organization} (ID: ${eo.organization_id || eo.organization})`)
-        })
-      } else {
-        console.log('⚠️ No EventOrganization entries in response (may need to refetch)')
-      }
-      // Refetch events to get all recurring instances and updated data
-      await fetchEvents()
-      setEditingEvent(null)
-    } catch (error) {
-      console.error('Error updating event:', error)
-    }
-  }
-
-  const handleDeleteEvent = async (eventId) => {
-    if (window.confirm('Are you sure you want to delete this event?')) {
-      try {
-        await axios.delete(`${API_URL}/api/events/${eventId}/`, {
-          headers: {
-            'Authorization': `Bearer ${user?.token}`
-          }
-        })
-        setEvents(events.filter(event => event.id !== eventId))
-      } catch (error) {
-        console.error('Error deleting event:', error)
-      }
-    }
-  }
-
-  const handleDownloadCSV = (event) => {
-    // Create CSV content
-    const csvContent = [
-      `${event.name},${format(new Date(event.date), 'M/d/yy')}`,
-      'First Name,Last Name,A-Number',
-      ...event.attendees
-        .sort((a, b) => 
-          `${a.student.last_name} ${a.student.first_name}`
-            .localeCompare(`${b.student.last_name} ${b.student.first_name}`)
-        )
-        .map(record => {
-          const aNumber = record.student.username
-          return `${record.student.first_name},${record.student.last_name},${aNumber}`
-        })
-    ].join('\n')
-
-    // Create filename
-    const eventDate = format(new Date(event.date), 'M/d/yy')
-    const filename = `${event.name}_Attendance_${eventDate}.csv`
-      .replace(/[/\\?%*:|"<>]/g, '-')
-
-    // Create and trigger download
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const link = document.createElement('a')
-    const url = URL.createObjectURL(blob)
-    link.setAttribute('href', url)
-    link.setAttribute('download', filename)
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-  }
 
   const filteredEvents = events
     .filter(event => 
@@ -235,32 +65,24 @@ function EventsListPage() {
       event.organization.toLowerCase().includes(searchTerm.toLowerCase()) ||
       event.event_type.toLowerCase().includes(searchTerm.toLowerCase())
     )
-    .filter(event => {
-      const eventDate = new Date(event.date)
-      const now = new Date()
-      return activeTab === "upcoming" ? eventDate > now : eventDate <= now
-    })
     .sort((a, b) => {
       const dateA = new Date(a.date)
       const dateB = new Date(b.date)
-      // Ascending for upcoming (closest first), descending for past (most recent first)
-      return activeTab === "upcoming" 
-        ? dateA - dateB  // Ascending
-        : dateB - dateA  // Descending
+      // Descending for past events (most recent first)
+      return dateB - dateA
     })
 
   const EventsTable = ({ events, showAttendance }) => (
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>Organization</TableHead>
-          <TableHead>Event Type</TableHead>
-          <TableHead>Name</TableHead>
-          <TableHead>Date</TableHead>
-          <TableHead className="hidden sm:table-cell">Recurrence Type</TableHead>
-          <TableHead className="hidden sm:table-cell">Location</TableHead>
-          {showAttendance && <TableHead>Attendance</TableHead>}
-          <TableHead className="w-[70px]"></TableHead>
+            <TableHead>Organization</TableHead>
+            <TableHead>Event Type</TableHead>
+            <TableHead>Name</TableHead>
+            <TableHead>Date</TableHead>
+            <TableHead className="hidden sm:table-cell">Recurrence Type</TableHead>
+            <TableHead className="hidden sm:table-cell">Location</TableHead>
+            {showAttendance && <TableHead>Attendance</TableHead>}
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -289,12 +111,10 @@ function EventsListPage() {
             <TableCell className="hidden sm:table-cell">{event.location}</TableCell>
             {showAttendance && (
               <TableCell>
-                <Button 
-                  variant="outline"
-                  size="sm"
+                <button
                   className={`${event.attendees?.length > 0 
-                    ? "bg-slate-50 hover:bg-slate-300 transition-colors"
-                    : "bg-slate-100 text-slate-400 cursor-not-allowed"
+                    ? "bg-slate-50 hover:bg-slate-300 transition-colors px-3 py-1 rounded border"
+                    : "bg-slate-100 text-slate-400 cursor-not-allowed px-3 py-1 rounded border"
                   }`}
                   onClick={() => {
                     if (event.attendees?.length > 0) {
@@ -305,29 +125,9 @@ function EventsListPage() {
                   disabled={!event.attendees?.length}
                 >
                   {event.attendees?.length || 0} <ClipboardList className="h-4 w-4 inline ml-1" />
-                </Button>
+                </button>
               </TableCell>
             )}
-            <TableCell>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="h-8 w-8 p-0">
-                    <MoreVertical className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => setEditingEvent(event)}>
-                    Edit
-                  </DropdownMenuItem>
-                  <DropdownMenuItem 
-                    onClick={() => handleDeleteEvent(event.id)}
-                    className="text-red-600"
-                  >
-                    Delete
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </TableCell>
           </TableRow>
         ))}
       </TableBody>
@@ -338,20 +138,6 @@ function EventsListPage() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">Events</h1>
-        <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-          <DialogTrigger asChild>
-            <Button>Create Event</Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Create New Event</DialogTitle>
-              <DialogDescription>
-                Fill out the form below to create a new event for students to attend.
-              </DialogDescription>
-            </DialogHeader>
-            <CreateEvent onCreateEvent={handleCreateEvent} />
-          </DialogContent>
-        </Dialog>
       </div>
 
       <div className="flex items-center space-x-2">
@@ -364,88 +150,58 @@ function EventsListPage() {
         />
       </div>
 
-      <Tabs defaultValue="upcoming" onValueChange={setActiveTab} className="w-full">
-        <div className="flex justify-center">
-          <TabsList className="w-full grid grid-cols-2">
-            <TabsTrigger value="upcoming">Upcoming Events</TabsTrigger>
-            <TabsTrigger value="past">Past Events</TabsTrigger>
-          </TabsList>
-        </div>
-        <TabsContent value="upcoming">
-          <div className="border rounded-lg">
-            <EventsTable events={filteredEvents} showAttendance={false} />
-          </div>
-        </TabsContent>
-        <TabsContent value="past">
-          <div className="border rounded-lg">
-            <EventsTable events={filteredEvents} showAttendance={true} />
-          </div>
-        </TabsContent>
-      </Tabs>
-
-      {/* Edit Event Dialog */}
-      <Dialog open={!!editingEvent} onOpenChange={() => setEditingEvent(null)}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Edit Event</DialogTitle>
-            <DialogDescription>
-              Update the event details below.
-            </DialogDescription>
-          </DialogHeader>
-          <CreateEvent 
-            onCreateEvent={handleEditEvent}
-            initialData={editingEvent}
-          />
-        </DialogContent>
-      </Dialog>
+      <div className="border rounded-lg">
+        <EventsTable events={filteredEvents} showAttendance={true} />
+      </div>
 
       {/* Attendance Dialog */}
       <Dialog open={showAttendees} onOpenChange={setShowAttendees}>
-        <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {selectedEvent?.name} - Attendance Details
             </DialogTitle>
             <DialogDescription>
-              View and manage attendance for this event.
+              View attendance for this event.
             </DialogDescription>
           </DialogHeader>
-          <div className="flex-1 overflow-y-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Check-in Time</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {selectedEvent?.attendees
-                  .sort((a, b) => 
-                    `${a.student.last_name} ${a.student.first_name}`
-                      .localeCompare(`${b.student.last_name} ${b.student.first_name}`)
-                  )
-                  .map((record) => (
-                    <TableRow key={record.id}>
-                      <TableCell>
-                        {record.student.first_name} {record.student.last_name}
-                      </TableCell>
-                      <TableCell>
-                        {format(record.checked_in_at, 'h:mm a')}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-              </TableBody>
-            </Table>
+          <div className="space-y-6">
+            {/* Current Attendees Table */}
+            <div>
+              <h3 className="text-lg font-semibold mb-4">Checked In Students ({selectedEvent?.attendees?.length || 0})</h3>
+              {selectedEvent?.attendees && selectedEvent.attendees.length > 0 ? (
+                <div className="border rounded-lg">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Check-in Time</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {selectedEvent.attendees
+                        .sort((a, b) => 
+                          `${a.student.last_name} ${a.student.first_name}`
+                            .localeCompare(`${b.student.last_name} ${b.student.first_name}`)
+                        )
+                        .map((record) => (
+                          <TableRow key={record.id}>
+                            <TableCell>
+                              {record.student.first_name} {record.student.last_name}
+                            </TableCell>
+                            <TableCell>
+                              {format(record.checked_in_at, 'h:mm a')}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : (
+                <p className="text-gray-500">No students checked in yet</p>
+              )}
+            </div>
           </div>
-          <DialogFooter className="mt-4">
-            <Button
-              variant="outline"
-              onClick={() => handleDownloadCSV(selectedEvent)}
-              className="bg-slate-50 hover:bg-slate-300"
-            >
-              Download
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

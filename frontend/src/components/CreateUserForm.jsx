@@ -19,7 +19,7 @@ function CreateUserForm({ onUserCreated }) {
   const [formData, setFormData] = useState({
     first_name: "",
     last_name: "",
-    email: "",
+    a_number: "",
     password: ""
   })
   const { toast } = useToast()
@@ -49,20 +49,20 @@ function CreateUserForm({ onUserCreated }) {
       })
       return false
     }
-    if (!formData.email.trim()) {
+    if (!formData.a_number.trim()) {
       toast({
         title: "Validation Error",
-        description: "Email is required", 
+        description: "A-number is required", 
         variant: "destructive"
       })
       return false
     }
-    // Validate USU email format
-    const emailPattern = /^a\d{8}@usu\.edu$/i
-    if (!emailPattern.test(formData.email)) {
+    // Validate A-number format
+    const aNumberPattern = /^a\d{8}$/i
+    if (!aNumberPattern.test(formData.a_number.trim())) {
       toast({
         title: "Validation Error",
-        description: "Please enter a valid USU student email (format: a########@usu.edu)",
+        description: "Please enter a valid A-number (format: a########)",
         variant: "destructive"
       })
       return false
@@ -108,7 +108,7 @@ function CreateUserForm({ onUserCreated }) {
         setFormData({
           first_name: "",
           last_name: "",
-          email: "",
+          a_number: "",
           password: ""
         })
         
@@ -142,7 +142,7 @@ function CreateUserForm({ onUserCreated }) {
     setFormData({
       first_name: "",
       last_name: "",
-      email: "",
+      a_number: "",
       password: ""
     })
     setIsOpen(false)
@@ -192,18 +192,18 @@ function CreateUserForm({ onUserCreated }) {
             </div>
             
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="a_number">A-Number</Label>
               <Input
-                id="email"
-                name="email"
-                type="email"
-                value={formData.email}
+                id="a_number"
+                name="a_number"
+                type="text"
+                value={formData.a_number}
                 onChange={handleInputChange}
-                placeholder="a12345678@usu.edu"
+                placeholder="a12345678"
                 required
               />
               <p className="text-xs text-gray-500">
-                Must be a valid USU student email (a########@usu.edu)
+                Must be a valid A-number (format: a########)
               </p>
             </div>
             

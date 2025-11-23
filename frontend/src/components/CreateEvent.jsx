@@ -365,7 +365,7 @@ function CreateEvent({ onCreateEvent, initialData }) {
       return org?.name || org
     }))
     console.log('Will create EventOrganization entries for:', secondaryOrgIds.length, 'organizations')
-
+    
     onCreateEvent({
       ...eventData,
       date: mountainTimeToISO(eventData.date),

@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label"
 import { QrCode, Download, Copy, Check } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
-function QRCodeGenerator({ event, baseUrl = "http://52.8.4.183", isGeneral = false }) {
+function QRCodeGenerator({ event, baseUrl = "http://52.8.4.183", isGeneral = false, organization = null }) {
   const [isOpen, setIsOpen] = useState(false)
   const [qrCodeUrl, setQrCodeUrl] = useState("")
   const [copied, setCopied] = useState(false)
@@ -20,7 +20,12 @@ function QRCodeGenerator({ event, baseUrl = "http://52.8.4.183", isGeneral = fal
 
   useEffect(() => {
     if (isOpen) {
-      if (isGeneral) {
+      if (organization) {
+        // Organization-specific check-in URL
+        const orgSlug = organization.toLowerCase().replace(/\s+/g, '') // Convert to lowercase and remove spaces
+        const orgCheckInUrl = `${baseUrl}/check-in/${orgSlug}`
+        setQrCodeUrl(orgCheckInUrl)
+      } else if (isGeneral) {
         const generalCheckInUrl = `${baseUrl}/check-in`
         setQrCodeUrl(generalCheckInUrl)
       } else if (event) {
@@ -28,10 +33,18 @@ function QRCodeGenerator({ event, baseUrl = "http://52.8.4.183", isGeneral = fal
         setQrCodeUrl(publicCheckInUrl)
       }
     }
-  }, [event, isOpen, baseUrl, isGeneral])
+  }, [event, isOpen, baseUrl, isGeneral, organization])
 
   const generateQRCode = () => {
-    const checkInUrl = isGeneral ? `${baseUrl}/check-in` : `${baseUrl}/check-in/public/${event.id}`
+    let checkInUrl
+    if (organization) {
+      const orgSlug = organization.toLowerCase().replace(/\s+/g, '')
+      checkInUrl = `${baseUrl}/check-in/${orgSlug}`
+    } else if (isGeneral) {
+      checkInUrl = `${baseUrl}/check-in`
+    } else {
+      checkInUrl = `${baseUrl}/check-in/public/${event.id}`
+    }
     
     // Use a QR code service to generate the QR code
     const qrCodeApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(checkInUrl)}`
@@ -61,9 +74,14 @@ function QRCodeGenerator({ event, baseUrl = "http://52.8.4.183", isGeneral = fal
     const qrCodeUrl = generateQRCode()
     const link = document.createElement('a')
     link.href = qrCodeUrl
-    const filename = isGeneral 
-      ? 'general_checkin_qr.png' 
-      : `${event.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_checkin_qr.png`
+    let filename
+    if (organization) {
+      filename = `${organization.toLowerCase().replace(/\s+/g, '_')}_checkin_qr.png`
+    } else if (isGeneral) {
+      filename = 'general_checkin_qr.png'
+    } else {
+      filename = `${event.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_checkin_qr.png`
+    }
     link.download = filename
     document.body.appendChild(link)
     link.click()
@@ -75,7 +93,7 @@ function QRCodeGenerator({ event, baseUrl = "http://52.8.4.183", isGeneral = fal
     })
   }
 
-  if (!event && !isGeneral) return null
+  if (!event && !isGeneral && !organization) return null
 
   return (
     <>
@@ -92,7 +110,7 @@ function QRCodeGenerator({ event, baseUrl = "http://52.8.4.183", isGeneral = fal
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
-              {isGeneral ? "General Check-In QR Code" : `QR Code for ${event.name}`}
+              {organization ? `${organization} Check-In QR Code` : isGeneral ? "General Check-In QR Code" : `QR Code for ${event.name}`}
             </DialogTitle>
           </DialogHeader>
           
@@ -122,14 +140,16 @@ function QRCodeGenerator({ event, baseUrl = "http://52.8.4.183", isGeneral = fal
               <div className="bg-white p-4 rounded-lg border inline-block">
                 <img
                   src={generateQRCode()}
-                  alt={isGeneral ? "General Check-In QR Code" : `QR Code for ${event.name}`}
+                  alt={organization ? `${organization} Check-In QR Code` : isGeneral ? "General Check-In QR Code" : `QR Code for ${event.name}`}
                   className="w-64 h-64"
                 />
               </div>
               <p className="text-sm text-gray-600 mt-2">
-                {isGeneral 
-                  ? "Students can scan this QR code to check in to the closest event"
-                  : "Students can scan this QR code to check in"
+                {organization 
+                  ? `Students can scan this QR code to check in to ${organization} events`
+                  : isGeneral 
+                    ? "Students can scan this QR code to check in to the closest event"
+                    : "Students can scan this QR code to check in"
                 }
               </p>
             </div>

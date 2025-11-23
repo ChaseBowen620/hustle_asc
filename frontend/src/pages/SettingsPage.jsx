@@ -405,17 +405,6 @@ function SettingsPage() {
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label className="text-sm font-medium text-gray-500">Username</Label>
-                <p className="text-lg font-medium">{userInfo.username}</p>
-              </div>
-              <div>
-                <Label className="text-sm font-medium text-gray-500">Email</Label>
-                <p className="text-lg font-medium">{userInfo.email}</p>
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div>
                 <Label className="text-sm font-medium text-gray-500">First Name</Label>
                 <p className="text-lg font-medium">{userInfo.first_name || userInfo.admin_profile?.first_name || "Not set"}</p>
               </div>
@@ -424,20 +413,19 @@ function SettingsPage() {
                 <p className="text-lg font-medium">{userInfo.last_name || userInfo.admin_profile?.last_name || "Not set"}</p>
               </div>
             </div>
-
-            {userInfo.admin_profile && (
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label className="text-sm font-medium text-gray-500">Username</Label>
+                <p className="text-lg font-medium">{userInfo.username}</p>
+              </div>
               <div>
                 <Label className="text-sm font-medium text-gray-500">Role</Label>
-                <p className="text-lg font-medium">{userInfo.admin_profile.role}</p>
+                <p className="text-lg font-medium">
+                  {userInfo.admin_profile?.role || (userInfo.is_admin ? "Administrator" : "Student")}
+                  {userInfo.is_superuser && " (Super User)"}
+                </p>
               </div>
-            )}
-
-            <div>
-              <Label className="text-sm font-medium text-gray-500">Account Type</Label>
-              <p className="text-lg font-medium">
-                {userInfo.is_admin ? "Administrator" : "Student"}
-                {userInfo.is_superuser && " (Super User)"}
-              </p>
             </div>
           </CardContent>
         </Card>
@@ -506,20 +494,34 @@ function SettingsPage() {
         {userInfo.is_admin && (
           <Card>
             <CardHeader>
-              <CardTitle>Check-In QR Code</CardTitle>
+              <CardTitle>Check-In QR Codes</CardTitle>
               <CardDescription>
-                Generate a QR code for students to check in to events
+                Generate QR codes for students to check in to organization-specific events
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                <p className="text-sm text-gray-600">
-                  This QR code will direct students to a general check-in page that automatically 
-                  finds the closest available event for today.
-                </p>
-                <div className="flex justify-center">
-                  <QRCodeGenerator isGeneral={true} />
-                </div>
+                {userInfo.admin_profile?.role ? (
+                  <>
+                    <p className="text-sm text-gray-600">
+                      Generate a QR code for your organization ({userInfo.admin_profile.role}). 
+                      Students scanning this code will see events for your organization.
+                    </p>
+                    <div className="flex justify-center">
+                      <QRCodeGenerator organization={userInfo.admin_profile.role} />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm text-gray-600">
+                      This QR code will direct students to a general check-in page that automatically 
+                      finds the closest available event for today.
+                    </p>
+                    <div className="flex justify-center">
+                      <QRCodeGenerator isGeneral={true} />
+                    </div>
+                  </>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -686,8 +688,7 @@ function SettingsPage() {
                             {student.first_name} {student.last_name}
                           </div>
                           <div className="text-sm text-gray-500">
-                            {student.email} • A-Number: {student.a_number || 'N/A'}
-                            {student.is_admin && ` • Current Role: ${student.admin_role}`}
+                            A-Number: {student.a_number || student.username || 'N/A'}
                           </div>
                         </div>
                       ))}

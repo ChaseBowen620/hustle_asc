@@ -1,39 +1,24 @@
 import { useState } from "react"
-import { useNavigate, Link } from "react-router-dom"
+import { useNavigate } from "react-router-dom"
 import { useAuth } from "@/hooks/useAuth"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 function LoginPage() {
-  const [identifier, setIdentifier] = useState("")
+  const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const navigate = useNavigate()
-  const { login, isAdmin } = useAuth()
+  const { login } = useAuth()
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError("")
     
     try {
-      // Convert identifier to proper format
-      let username = identifier.toLowerCase()
-      // If it's an email, extract the A-Number
-      if (username.includes('@')) {
-        username = username.split('@')[0]
-      }
-      // Remove any spaces
-      username = username.trim()
-      
-      const userData = await login(username, password)
-      
-      // Redirect based on user role
-      if (isAdmin(userData)) {
-        navigate('/events')
-      } else {
-        navigate('/dashboard')
-      }
+      await login(username, password)
+      navigate('/admin/dashboard')
     } catch (error) {
       setError("Invalid credentials")
       console.error('Login error:', error)
@@ -41,46 +26,44 @@ function LoginPage() {
   }
 
   return (
-    <div className="bg-background p-4 pt-16 sm:pt-24">
-      <Card className="w-full max-w-md mx-auto">
-        <CardHeader>
-          <CardTitle className="text-2xl text-center">Sign In</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Input
-                type="text"
-                placeholder="A-Number or Email"
-                value={identifier}
-                onChange={(e) => setIdentifier(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Input
-                type="password"
-                placeholder="Password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </div>
-            {error && (
-              <p className="text-sm text-red-500 text-center">{error}</p>
-            )}
-            <Button type="submit" className="w-full">
-              Sign In
-            </Button>
-            <p className="text-sm text-center text-gray-500">
-              Don't have an account?{" "}
-              <Link to="/register" className="text-blue-500 hover:text-blue-600">
-                Create Account
-              </Link>
-            </p>
-          </form>
-        </CardContent>
-      </Card>
+    <div className="min-h-screen bg-background">
+      <div className="p-4 pt-16 sm:pt-24">
+        <h1 className="text-3xl font-bold text-center mb-8">HUSTLE Dashboard</h1>
+        
+        <Card className="w-full max-w-md mx-auto">
+          <CardHeader>
+            <CardTitle className="text-2xl text-center">Sign In</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Input
+                  type="text"
+                  placeholder="Username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Input
+                  type="password"
+                  placeholder="Password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+              </div>
+              {error && (
+                <p className="text-sm text-red-500 text-center">{error}</p>
+              )}
+              <Button type="submit" className="w-full">
+                Sign In
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }

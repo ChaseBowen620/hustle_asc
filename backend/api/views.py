@@ -32,6 +32,7 @@ import calendar
 class StudentViewSet(viewsets.ModelViewSet):
     queryset = Student.objects.all().order_by('first_name', 'last_name')
     serializer_class = StudentSerializer
+    permission_classes = [AllowAny]  # Make read operations public
 
     def list(self, request):
         queryset = self.get_queryset()
@@ -42,6 +43,7 @@ class StudentViewSet(viewsets.ModelViewSet):
 class EventViewSet(viewsets.ModelViewSet):
     queryset = Event.objects.all()
     serializer_class = EventSerializer
+    permission_classes = [AllowAny]  # Make read operations public
 
     def get_queryset(self):
         """Filter events by organization based on admin role"""
@@ -209,6 +211,7 @@ class EventViewSet(viewsets.ModelViewSet):
 class AttendanceViewSet(viewsets.ModelViewSet):
     queryset = Attendance.objects.select_related('student', 'event').all()
     serializer_class = AttendanceSerializer
+    permission_classes = [AllowAny]  # Make read operations public
 
     def get_queryset(self):
         """Filter attendance by organization based on admin role"""
@@ -329,25 +332,38 @@ class TeachingAssistantViewSet(viewsets.ModelViewSet):
 @permission_classes([AllowAny])
 def register_student(request):
     try:
-        email = request.data.get('email', '').lower()
+        # Get A-number from request (can be passed as 'a_number' or 'email' for backwards compatibility)
+        a_number = request.data.get('a_number', '').lower().strip()
+        if not a_number:
+            # Try to extract from email if provided (for backwards compatibility)
+            email = request.data.get('email', '').lower()
+            if email and '@usu.edu' in email:
+                a_number = email.split('@')[0]
         
-        # Validate email format
-        email_pattern = r'^a\d{8}@usu\.edu$'
-        if not re.match(email_pattern, email):
+        if not a_number:
             return Response({
-                'error': 'Please enter a valid student email (format: a########@usu.edu)'
+                'error': 'A-number is required'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Extract A-Number from email
-        a_number = email.split('@')[0]  # This will be 'a########'
+        # Validate A-number format (should be 'a' followed by 8 digits)
+        a_number_pattern = r'^a\d{8}$'
+        if not re.match(a_number_pattern, a_number):
+            return Response({
+                'error': 'Please enter a valid A-number (format: a########)'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check if user with this A-number already exists
+        if User.objects.filter(username=a_number).exists():
+            return Response({
+                'error': 'A user with this A-number already exists'
+            }, status=status.HTTP_400_BAD_REQUEST)
         
         # Create user account
         user = User.objects.create_user(
             username=a_number,  # Using A-Number as username
-            email=email,
-            password=request.data['password'],
-            first_name=request.data['first_name'],
-            last_name=request.data['last_name']
+            password=request.data.get('password', 'changeme!'),
+            first_name=request.data.get('first_name', ''),
+            last_name=request.data.get('last_name', '')
         )
         
         # Add to Students group
@@ -376,7 +392,6 @@ def get_user_details(request):
     return Response({
         'id': user.id,
         'username': user.username,
-        'email': user.email,
         'first_name': user.first_name,
         'last_name': user.last_name,
         'groups': list(user.groups.values_list('name', flat=True)),
@@ -448,7 +463,6 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         
         # Add custom claims
         data['username'] = self.user.username
-        data['email'] = self.user.email
         data['first_name'] = self.user.first_name
         data['last_name'] = self.user.last_name
         data['groups'] = list(self.user.groups.values_list('name', flat=True))
@@ -479,7 +493,7 @@ class CustomTokenObtainPairView(TokenObtainPairView):
 
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def total_students(request):
     # Check if user is admin and filter by organization
     # Super Admin, DAISSA, and Faculty can see all students
@@ -497,7 +511,7 @@ def total_students(request):
     return Response({'count': count})
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def participating_students(request):
     filter_type = request.GET.get('filter', 'semester')
     
@@ -552,7 +566,7 @@ def participating_students(request):
     return Response({'count': count})
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def student_points(request):
     filter_type = request.GET.get('filter', 'semester')
     organization_filter = request.GET.get('organization', None)
@@ -714,7 +728,6 @@ def student_points(request):
         'student_id': student.id,
         'first_name': student.first_name,
         'last_name': student.last_name,
-        'email': student.email,
         'total_points': student.filtered_points or 0
     } for student in students]
     
@@ -740,7 +753,6 @@ def list_admin_users(request):
             'id': admin_user.id,
             'user_id': admin_user.user.id,
             'username': admin_user.user.username,
-            'email': admin_user.user.email,
             'first_name': admin_user.first_name,
             'last_name': admin_user.last_name,
             'role': admin_user.role,
@@ -768,7 +780,6 @@ def create_admin_user(request):
     student_id = request.data.get('student_id')
     first_name = request.data.get('first_name')
     last_name = request.data.get('last_name')
-    email = request.data.get('email')
     
     if not role:
         return Response(
@@ -802,42 +813,27 @@ def create_admin_user(request):
         )
     else:
         # Create new user and admin user (for Faculty)
-        if not first_name or not last_name or not email:
+        if not first_name or not last_name:
             return Response(
-                {'error': 'first_name, last_name, and email are required when creating a new user'},
+                {'error': 'first_name and last_name are required when creating a new user'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Check if user with this email already exists
-        if User.objects.filter(email=email.lower()).exists():
-            existing_user = User.objects.get(email=email.lower())
-            # Check if they already have an admin profile
-            if hasattr(existing_user, 'adminuser'):
-                return Response(
-                    {'error': 'A user with this email already exists and is already an admin user'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            # If user exists but no admin profile, create admin profile
-            user = existing_user
-        else:
-            # Create new user
-            # Generate username from email
-            username = email.split('@')[0].lower()
-            # Ensure username is unique
-            base_username = username
-            counter = 1
-            while User.objects.filter(username=username).exists():
-                username = f"{base_username}{counter}"
-                counter += 1
-            
-            # Create user with default password
-            user = User.objects.create_user(
-                username=username,
-                email=email.lower(),
-                password='changeme!',
-                first_name=first_name,
-                last_name=last_name
-            )
+        # Generate username from first_name and last_name
+        base_username = f"{first_name.lower()}{last_name.lower()}".replace(' ', '')
+        username = base_username
+        counter = 1
+        while User.objects.filter(username=username).exists():
+            username = f"{base_username}{counter}"
+            counter += 1
+        
+        # Create user with default password
+        user = User.objects.create_user(
+            username=username,
+            password='changeme!',
+            first_name=first_name,
+            last_name=last_name
+        )
         
         # Create admin user
         admin_user = AdminUser.objects.create(
@@ -851,7 +847,6 @@ def create_admin_user(request):
         'id': admin_user.id,
         'user_id': admin_user.user.id,
         'username': admin_user.user.username,
-        'email': admin_user.user.email,
         'first_name': admin_user.first_name,
         'last_name': admin_user.last_name,
         'role': admin_user.role,
@@ -888,7 +883,6 @@ def update_admin_user(request, admin_user_id):
         'id': admin_user.id,
         'user_id': admin_user.user.id,
         'username': admin_user.user.username,
-        'email': admin_user.user.email,
         'first_name': admin_user.first_name,
         'last_name': admin_user.last_name,
         'role': admin_user.role,
@@ -921,11 +915,12 @@ def delete_admin_user(request, admin_user_id):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def search_students(request):
-    """Search for students by name, email, or A-number - only accessible to Super Admin, DAISSA, or Faculty"""
+    """Search for students by name, email, or A-number - accessible to all admin users"""
     from .models import AdminUser
     
+    # Allow any admin user to search students (for check-in and other admin functions)
     admin_profile = getattr(request.user, 'adminuser', None)
-    if not admin_profile or admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
+    if not admin_profile:
         return Response(
             {'error': 'You do not have permission to search students'},
             status=status.HTTP_403_FORBIDDEN
@@ -936,11 +931,10 @@ def search_students(request):
     if not query or len(query) < 2:
         return Response([])
     
-    # Search by name, email, or username (which contains A-number)
+    # Search by name or username (which contains A-number)
     students = Student.objects.filter(
         Q(first_name__icontains=query) |
         Q(last_name__icontains=query) |
-        Q(email__icontains=query) |
         Q(user__username__icontains=query) |
         Q(username__icontains=query)
     ).select_related('user')[:20]  # Limit to 20 results
@@ -962,7 +956,6 @@ def search_students(request):
             'id': student.id,
             'first_name': student.first_name,
             'last_name': student.last_name,
-            'email': student.email,
             'a_number': student.user.username if student.user.username else '',
             'username': student.user.username,
             'is_admin': is_admin,
@@ -1077,7 +1070,7 @@ def manage_organization(request, organization_id):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def attendance_overview(request):
     # Check if user is admin and filter by organization
     # Super Admin, DAISSA, and Faculty can see all events

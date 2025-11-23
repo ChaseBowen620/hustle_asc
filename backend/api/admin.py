@@ -5,9 +5,9 @@ from .models import Student, Event, Attendance, Semester, Professor, Class, Teac
 
 @admin.register(Student)
 class StudentAdmin(admin.ModelAdmin):
-    list_display = ('id', 'first_name', 'last_name', 'email', 'total_points', 'created_at')
+    list_display = ('id', 'first_name', 'last_name', 'username', 'total_points', 'created_at')
     list_filter = ('created_at',)
-    search_fields = ('id', 'first_name', 'last_name', 'email', 'user__username')
+    search_fields = ('id', 'first_name', 'last_name', 'username', 'user__username')
 
 @admin.register(Event)
 class EventAdmin(admin.ModelAdmin):
@@ -61,7 +61,7 @@ class EventOrganizationAdmin(admin.ModelAdmin):
 class AdminUserAdmin(admin.ModelAdmin):
     list_display = ('id', 'first_name', 'last_name', 'role', 'user', 'created_at')
     list_filter = ('role', 'created_at')
-    search_fields = ('id', 'first_name', 'last_name', 'role', 'user__username', 'user__email')
+    search_fields = ('id', 'first_name', 'last_name', 'role', 'user__username')
     list_editable = ('role',)
 
 @admin.register(Organization)
