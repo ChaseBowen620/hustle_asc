@@ -10,26 +10,26 @@ const useAuth = create((set) => {
   
   return {
     user,
-    
-    login: async (username, password) => {
+  
+  login: async (username, password) => {
       // Simple credential check
       if (username === VALID_USERNAME && password === VALID_PASSWORD) {
-        const userData = {
+      const userData = {
           username: VALID_USERNAME,
           isAuthenticated: true
-        }
-        localStorage.setItem('user', JSON.stringify(userData))
-        set({ user: userData })
-        return userData
+      }
+      localStorage.setItem('user', JSON.stringify(userData))
+      set({ user: userData })
+      return userData
       } else {
         throw new Error('Invalid credentials')
-      }
-    },
-
-    logout: () => {
-      localStorage.removeItem('user')
-      set({ user: null })
     }
+  },
+
+  logout: () => {
+    localStorage.removeItem('user')
+    set({ user: null })
+  }
   }
 })
 

@@ -32,8 +32,8 @@ function Navbar() {
             <Link to="/admin/dashboard" className={linkClass("/admin/dashboard")}>
               Dashboard
             </Link>
-            <Link to="/events" className={linkClass("/events")}>
-              Events List
+              <Link to="/events" className={linkClass("/events")}>
+                Events List
             </Link>
           </div>
           <div>

@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react"
 import axios from "axios"
-import { Line } from 'react-chartjs-2'
+import { Line, Bar } from 'react-chartjs-2'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { API_URL } from '@/config/api'
 import '../lib/chart'  // Import the chart registration
 import { format } from "date-fns"
@@ -37,6 +38,10 @@ function AdminDashboardPage() {
   const [selectedEvent, setSelectedEvent] = useState(null)
   const [showEventDetails, setShowEventDetails] = useState(false)
   const [allEvents, setAllEvents] = useState([]) // Store all events for lookup
+  const [selectedStudent, setSelectedStudent] = useState(null)
+  const [showStudentDetails, setShowStudentDetails] = useState(false)
+  const [studentAttendanceByOrg, setStudentAttendanceByOrg] = useState(null)
+  const [searchQuery, setSearchQuery] = useState("")
   // No authentication - show all data
   const canSeeAllData = true
 
@@ -47,6 +52,13 @@ function AdminDashboardPage() {
     fetchOrganizations()
   }, [filter, selectedOrganization])
 
+  // Refresh student attendance chart when filter changes and dialog is open
+  useEffect(() => {
+    if (showStudentDetails && selectedStudent) {
+      fetchStudentAttendanceByOrg(selectedStudent.id)
+    }
+  }, [filter])
+
   const fetchStudentData = async () => {
     try {
       // Build student points URL with organization filter if applicable
@@ -55,12 +67,20 @@ function AdminDashboardPage() {
         studentPointsUrl += `&organization=${encodeURIComponent(selectedOrganization)}`
       }
       
+      // Build URLs with organization filter if applicable
+      let totalStudentsUrl = `${API_URL}/api/students/total/`
+      let participatingStudentsUrl = `${API_URL}/api/students/participating/?filter=${filter}`
+      if (selectedOrganization) {
+        totalStudentsUrl += `?organization=${encodeURIComponent(selectedOrganization)}`
+        participatingStudentsUrl += `&organization=${encodeURIComponent(selectedOrganization)}`
+      }
+      
       const [studentData, attendanceData, eventData, totalStudentsRes, participatingStudentsRes, studentPointsRes] = await Promise.all([
         axios.get(`${API_URL}/api/students`),
         axios.get(`${API_URL}/api/attendance`),
         axios.get(`${API_URL}/api/events`),
-        axios.get(`${API_URL}/api/students/total/`),
-        axios.get(`${API_URL}/api/students/participating/?filter=${filter}`),
+        axios.get(totalStudentsUrl),
+        axios.get(participatingStudentsUrl),
         axios.get(studentPointsUrl)
       ])
       
@@ -145,10 +165,122 @@ function AdminDashboardPage() {
     }
   }
 
+  const fetchStudentAttendanceByOrg = async (studentId) => {
+    try {
+      // Fetch all attendances and filter by student on frontend
+      // (The API might not support student filtering directly)
+      const attendanceResponse = await axios.get(`${API_URL}/api/attendance`)
+      const allAttendances = attendanceResponse.data
+      
+      // Fetch all events to get organization info and dates
+      const eventsResponse = await axios.get(`${API_URL}/api/events`)
+      const events = eventsResponse.data
+      
+      // Create a map of event ID to organization and date
+      const eventMap = {}
+      events.forEach(event => {
+        eventMap[event.id] = {
+          organization: event.organization || 'Unknown',
+          date: new Date(event.date)
+        }
+      })
+      
+      // Calculate date range based on filter
+      const now = new Date()
+      let startDate = null
+      
+      if (filter === "year") {
+        // Academic year: Fall semester starts in August
+        const currentMonth = now.getMonth()
+        const currentYear = now.getFullYear()
+        
+        if (currentMonth >= 7) { // Aug-Dec (Fall semester)
+          // Current academic year started in August of current year
+          startDate = new Date(currentYear, 7, 1) // August 1st of current year
+        } else { // Jan-July (Spring semester)
+          // Current academic year started in August of previous year
+          startDate = new Date(currentYear - 1, 7, 1) // August 1st of previous year
+        }
+      } else if (filter === "semester") {
+        // Assuming fall semester starts in August, spring in January
+        const currentMonth = now.getMonth()
+        if (currentMonth >= 0 && currentMonth <= 4) { // Jan-May (Spring)
+          startDate = new Date(now.getFullYear(), 0, 1)
+        } else { // Aug-Dec (Fall)
+          startDate = new Date(now.getFullYear(), 7, 1) // August 1st
+        }
+      }
+      
+      // Filter attendances for this specific student and by date
+      const attendances = allAttendances.filter(attendance => {
+        // Filter by student
+        const studentIdValue = typeof attendance.student === 'object' 
+          ? attendance.student?.id 
+          : attendance.student || attendance.student_id
+        if (studentIdValue !== studentId) return false
+        
+        // Filter by date if filter is not "all"
+        if (filter !== "all" && startDate) {
+          const eventId = typeof attendance.event === 'object' 
+            ? attendance.event?.id 
+            : attendance.event || attendance.event_id
+          const eventInfo = eventMap[eventId]
+          if (!eventInfo) return false
+          
+          const eventDate = eventInfo.date
+          if (filter === "semester") {
+            // For semester, also need end date
+            const currentMonth = now.getMonth()
+            let endDate
+            if (currentMonth >= 0 && currentMonth <= 4) { // Jan-May (Spring)
+              endDate = new Date(now.getFullYear(), 7, 1) // August 1st
+            } else { // Aug-Dec (Fall)
+              endDate = new Date(now.getFullYear() + 1, 0, 1) // January 1st of next year
+            }
+            return eventDate >= startDate && eventDate < endDate
+          } else if (filter === "year") {
+            // For year, include all events from startDate onwards
+            return eventDate >= startDate
+          }
+        }
+        
+        return true
+      })
+      
+      // Group attendances by organization
+      const orgCounts = {}
+      attendances.forEach(attendance => {
+        // The event field can be an ID (number) or an object with an id property
+        const eventId = typeof attendance.event === 'object' 
+          ? attendance.event?.id 
+          : attendance.event || attendance.event_id
+        const eventInfo = eventMap[eventId]
+        const org = eventInfo ? eventInfo.organization : 'Unknown'
+        orgCounts[org] = (orgCounts[org] || 0) + 1
+      })
+      
+      setStudentAttendanceByOrg(orgCounts)
+    } catch (error) {
+      console.error('Error fetching student attendance:', error)
+      setStudentAttendanceByOrg({})
+    }
+  }
+
+  const handleStudentClick = async (student) => {
+    setSelectedStudent(student)
+    setShowStudentDetails(true)
+    await fetchStudentAttendanceByOrg(student.id)
+  }
+
   const fetchOrganizations = async () => {
     try {
-      const response = await axios.get(`${API_URL}/api/events/organizations/`)
-      setOrganizations(response.data)
+      const response = await axios.get(`${API_URL}/api/events`)
+      // Get unique organizations from the organization column of events
+      const uniqueOrgs = [...new Set(response.data.map(event => event.organization).filter(org => org))]
+      // Sort alphabetically
+      uniqueOrgs.sort()
+      // Convert to array of objects with name property for consistency
+      setOrganizations(uniqueOrgs.map(org => ({ name: org })))
     } catch (error) {
       console.error('Error fetching organizations:', error)
     }
@@ -161,8 +293,19 @@ function AdminDashboardPage() {
         axios.get(`${API_URL}/api/events`)
       ])
       
-      // Create a map of event IDs to dates
-      const eventDateMap = eventsResponse.data.reduce((acc, event) => {
+      // Filter events by organization if selected
+      let filteredEvents = eventsResponse.data
+      if (selectedOrganization) {
+        filteredEvents = eventsResponse.data.filter(event => 
+          event.organization === selectedOrganization ||
+          (event.event_organizations && event.event_organizations.some(eo => 
+            (eo.organization_name || eo.organization) === selectedOrganization
+          ))
+        )
+      }
+      
+      // Create a map of event IDs to dates (only for filtered events)
+      const eventDateMap = filteredEvents.reduce((acc, event) => {
         acc[event.id] = {
           date: event.date.split('T')[0],
           name: event.name,
@@ -172,8 +315,15 @@ function AdminDashboardPage() {
         return acc
       }, {})
       
+      // Get list of filtered event IDs
+      const filteredEventIds = new Set(filteredEvents.map(e => e.id))
+      
       // Group attendance by date, storing event IDs for each point
+      // Only include attendance records for filtered events
       const groupedData = attendanceResponse.data.reduce((acc, record) => {
+        // Skip if event is not in the filtered list
+        if (!filteredEventIds.has(record.event)) return acc
+        
         const eventInfo = eventDateMap[record.event]
         if (!eventInfo) return acc // Skip if no event info
         
@@ -414,7 +564,7 @@ function AdminDashboardPage() {
         <TabsContent value="students" className="space-y-4">
           <div className="flex justify-between items-center">
             <div className="flex items-center space-x-2">
-              <label className="text-sm font-medium">Filter by Organization:</label>
+              <label className="text-sm font-medium">Filter by Event Type:</label>
               <Select
                 value={selectedOrganization || "all"}
                 onValueChange={(value) => {
@@ -423,10 +573,10 @@ function AdminDashboardPage() {
                 }}
               >
                 <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="All Organizations" />
+                  <SelectValue placeholder="All Event Types" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Organizations</SelectItem>
+                  <SelectItem value="all">All Event Types</SelectItem>
                   {organizations.map((org, index) => (
                     <SelectItem 
                       key={`org-${index}`} 
@@ -437,6 +587,16 @@ function AdminDashboardPage() {
                   ))}
                 </SelectContent>
               </Select>
+              <Input
+                type="text"
+                placeholder="Search students by name..."
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value)
+                  setCurrentPage(1) // Reset to first page when search changes
+                }}
+                className="w-[250px]"
+              />
             </div>
             <div className="flex space-x-2">
               <Button
@@ -465,17 +625,25 @@ function AdminDashboardPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
                   <TableHead className="text-right">Points</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {students
+                  .filter(student => {
+                    if (!searchQuery) return true
+                    const fullName = `${student.first_name} ${student.last_name}`.toLowerCase()
+                    const query = searchQuery.toLowerCase()
+                    return fullName.includes(query)
+                  })
                   .slice((currentPage - 1) * studentsPerPage, currentPage * studentsPerPage)
                   .map(student => (
-                    <TableRow key={student.id}>
+                    <TableRow 
+                      key={student.id}
+                      className="cursor-pointer hover:bg-gray-50"
+                      onClick={() => handleStudentClick(student)}
+                    >
                       <TableCell>{student.first_name} {student.last_name}</TableCell>
-                      <TableCell>{student.email}</TableCell>
                       <TableCell className="text-right">{student.filtered_points || 0}</TableCell>
                     </TableRow>
                   ))}
@@ -484,7 +652,12 @@ function AdminDashboardPage() {
           </div>
           
           <Pagination
-            totalStudents={students.length}
+            totalStudents={students.filter(student => {
+              if (!searchQuery) return true
+              const fullName = `${student.first_name} ${student.last_name}`.toLowerCase()
+              const query = searchQuery.toLowerCase()
+              return fullName.includes(query)
+            }).length}
             studentsPerPage={studentsPerPage}
             currentPage={currentPage}
             onPageChange={setCurrentPage}
@@ -496,6 +669,32 @@ function AdminDashboardPage() {
             <CardHeader>
               <CardTitle>Attendance Trends</CardTitle>
               <CardDescription>Event attendance over time</CardDescription>
+              <div className="flex justify-end mt-4">
+                <div className="flex items-center space-x-2">
+                  <label className="text-sm font-medium">Filter by Organization:</label>
+                  <Select
+                    value={selectedOrganization || "all"}
+                    onValueChange={(value) => {
+                      setSelectedOrganization(value === "all" ? "" : value)
+                    }}
+                  >
+                    <SelectTrigger className="w-[200px]">
+                      <SelectValue placeholder="All Organizations" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Organizations</SelectItem>
+                      {organizations.map((org, index) => (
+                        <SelectItem 
+                          key={`org-${index}`} 
+                          value={org.name || org}
+                        >
+                          {org.name || org}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               <div style={{ height: '400px' }}>
@@ -543,6 +742,87 @@ function AdminDashboardPage() {
                   <p className="text-sm text-gray-700">
                     {selectedEvent.event_organizations.map(eo => eo.organization_name || eo.organization).join(', ')}
                   </p>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Student Details Dialog */}
+      <Dialog open={showStudentDetails} onOpenChange={setShowStudentDetails}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              {selectedStudent && `${selectedStudent.first_name} ${selectedStudent.last_name}`}
+            </DialogTitle>
+            <DialogDescription>
+              Student attendance by organization ({filter === "all" ? "All Time" : filter === "year" ? "This Year" : "This Semester"})
+            </DialogDescription>
+          </DialogHeader>
+          {selectedStudent && (
+            <div className="space-y-4">
+              <div>
+                <h4 className="font-semibold text-sm text-gray-600 mb-1">A-Number</h4>
+                <p className="text-sm text-gray-700">
+                  {selectedStudent.user?.username || selectedStudent.user?.a_number || selectedStudent.a_number || 'N/A'}
+                </p>
+              </div>
+              
+              {studentAttendanceByOrg && Object.keys(studentAttendanceByOrg).length > 0 ? (
+                <div>
+                  <h4 className="font-semibold text-sm text-gray-600 mb-4">Attendance by Organization</h4>
+                  <div style={{ height: '300px' }}>
+                    <Bar
+                      data={{
+                        labels: Object.keys(studentAttendanceByOrg),
+                        datasets: [
+                          {
+                            label: 'Number of Attendances',
+                            data: Object.values(studentAttendanceByOrg),
+                            backgroundColor: [
+                              'rgba(54, 162, 235, 0.6)',
+                              'rgba(255, 99, 132, 0.6)',
+                              'rgba(255, 206, 86, 0.6)',
+                              'rgba(75, 192, 192, 0.6)',
+                              'rgba(153, 102, 255, 0.6)',
+                              'rgba(255, 159, 64, 0.6)',
+                            ],
+                            borderColor: [
+                              'rgba(54, 162, 235, 1)',
+                              'rgba(255, 99, 132, 1)',
+                              'rgba(255, 206, 86, 1)',
+                              'rgba(75, 192, 192, 1)',
+                              'rgba(153, 102, 255, 1)',
+                              'rgba(255, 159, 64, 1)',
+                            ],
+                            borderWidth: 1,
+                          },
+                        ],
+                      }}
+                      options={{
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                          y: {
+                            beginAtZero: true,
+                            ticks: {
+                              stepSize: 1,
+                            },
+                          },
+                        },
+                        plugins: {
+                          legend: {
+                            display: false,
+                          },
+                        },
+                      }}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <p className="text-sm text-gray-500">No attendance data available for this student.</p>
                 </div>
               )}
             </div>

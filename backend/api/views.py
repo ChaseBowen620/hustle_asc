@@ -496,9 +496,18 @@ class CustomTokenObtainPairView(TokenObtainPairView):
 @permission_classes([AllowAny])
 def total_students(request):
     # Check if user is admin and filter by organization
-    # Super Admin, DAISSA, and Faculty can see all students
+    organization_filter = request.GET.get('organization', None)
     admin_profile = getattr(request.user, 'adminuser', None)
-    if admin_profile and admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
+    
+    # With AllowAny permission, we allow organization filtering via query parameter
+    if organization_filter:
+        # Filter students who attended events from the specified organization (primary or secondary)
+        from .models import EventOrganization
+        count = Student.objects.filter(
+            Q(attendances__event__organization=organization_filter) |
+            Q(attendances__event__event_organizations__organization__name=organization_filter)
+        ).distinct().count()
+    elif admin_profile and admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
         # Filter students who attended events from this admin's organization (primary or secondary)
         from .models import EventOrganization
         count = Student.objects.filter(
@@ -514,6 +523,7 @@ def total_students(request):
 @permission_classes([AllowAny])
 def participating_students(request):
     filter_type = request.GET.get('filter', 'semester')
+    organization_filter = request.GET.get('organization', None)
     
     # Check if user is admin and filter by organization
     admin_profile = getattr(request.user, 'adminuser', None)
@@ -521,11 +531,17 @@ def participating_students(request):
     # Base query
     query = Student.objects
     
-    # Apply organization filter if admin
-    # Super Admin, DAISSA, and Faculty can see all students
-    if admin_profile and admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
-        from .models import EventOrganization
-        # Include students who attended events where organization is primary OR secondary
+    # Apply organization filter
+    # With AllowAny permission, we allow organization filtering via query parameter
+    from .models import EventOrganization
+    if organization_filter:
+        # Filter by organization parameter (primary or secondary)
+        query = query.filter(
+            Q(attendances__event__organization=organization_filter) |
+            Q(attendances__event__event_organizations__organization__name=organization_filter)
+        )
+    elif admin_profile and admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
+        # Filter by admin's organization (primary or secondary)
         query = query.filter(
             Q(attendances__event__organization=admin_profile.role) |
             Q(attendances__event__event_organizations__organization__name=admin_profile.role)
@@ -578,23 +594,20 @@ def student_points(request):
     students = Student.objects.all()
     
     # Apply organization filter
-    # Super Admin, DAISSA, and Faculty can see all students, and can filter by organization
+    # With AllowAny permission, we allow organization filtering via query parameter
     from .models import EventOrganization
-    if admin_profile:
-        if admin_profile.role in ['Super Admin', 'DAISSA', 'Faculty']:
-            # Users who can see all data can filter by organization parameter
-            if organization_filter:
-                # Include events where organization is primary OR secondary
-                students = students.filter(
-                    Q(attendances__event__organization=organization_filter) |
-                    Q(attendances__event__event_organizations__organization__name=organization_filter)
-                ).distinct()
-        else:
-            # Other admins are filtered to their own organization (primary or secondary)
-            students = students.filter(
-                Q(attendances__event__organization=admin_profile.role) |
-                Q(attendances__event__event_organizations__organization__name=admin_profile.role)
-            ).distinct()
+    if organization_filter:
+        # Filter by organization parameter (primary or secondary)
+        students = students.filter(
+            Q(attendances__event__organization=organization_filter) |
+            Q(attendances__event__event_organizations__organization__name=organization_filter)
+        ).distinct()
+    elif admin_profile and admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
+        # If no organization filter but user is authenticated non-super-admin, filter by their role
+        students = students.filter(
+            Q(attendances__event__organization=admin_profile.role) |
+            Q(attendances__event__event_organizations__organization__name=admin_profile.role)
+        ).distinct()
     
     # Get current date
     now = timezone.now()
@@ -612,20 +625,7 @@ def student_points(request):
             semester_end = timezone.make_aware(datetime(current_year, 8, 1))
         
         # For organization filtering, we need to check both primary and secondary organizations
-        if admin_profile and admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
-            # Filter by organization (primary or secondary) AND date range
-            students = students.annotate(
-                filtered_points=Count(
-                    'attendances',
-                    filter=models.Q(
-                        Q(attendances__event__organization=admin_profile.role) |
-                        Q(attendances__event__event_organizations__organization__name=admin_profile.role),
-                        attendances__event__date__gte=semester_start,
-                        attendances__event__date__lt=semester_end
-                    )
-                )
-            )
-        elif admin_profile and admin_profile.role in ['Super Admin', 'DAISSA', 'Faculty'] and organization_filter:
+        if organization_filter:
             # Filter by organization parameter (primary or secondary) AND date range
             students = students.annotate(
                 filtered_points=Count(
@@ -633,6 +633,19 @@ def student_points(request):
                     filter=models.Q(
                         Q(attendances__event__organization=organization_filter) |
                         Q(attendances__event__event_organizations__organization__name=organization_filter),
+                        attendances__event__date__gte=semester_start,
+                        attendances__event__date__lt=semester_end
+                    )
+                )
+            )
+        elif admin_profile and admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
+            # Filter by organization (primary or secondary) AND date range (for authenticated non-super-admin)
+            students = students.annotate(
+                filtered_points=Count(
+                    'attendances',
+                    filter=models.Q(
+                        Q(attendances__event__organization=admin_profile.role) |
+                        Q(attendances__event__event_organizations__organization__name=admin_profile.role),
                         attendances__event__date__gte=semester_start,
                         attendances__event__date__lt=semester_end
                     )
@@ -658,19 +671,7 @@ def student_points(request):
         )
         
         # For organization filtering, we need to check both primary and secondary organizations
-        if admin_profile and admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
-            # Filter by organization (primary or secondary) AND date range
-            students = students.annotate(
-                filtered_points=Count(
-                    'attendances',
-                    filter=models.Q(
-                        Q(attendances__event__organization=admin_profile.role) |
-                        Q(attendances__event__event_organizations__organization__name=admin_profile.role),
-                        attendances__event__date__gte=academic_year_start
-                    )
-                )
-            )
-        elif admin_profile and admin_profile.role in ['Super Admin', 'DAISSA', 'Faculty'] and organization_filter:
+        if organization_filter:
             # Filter by organization parameter (primary or secondary) AND date range
             students = students.annotate(
                 filtered_points=Count(
@@ -678,6 +679,18 @@ def student_points(request):
                     filter=models.Q(
                         Q(attendances__event__organization=organization_filter) |
                         Q(attendances__event__event_organizations__organization__name=organization_filter),
+                        attendances__event__date__gte=academic_year_start
+                    )
+                )
+            )
+        elif admin_profile and admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
+            # Filter by organization (primary or secondary) AND date range (for authenticated non-super-admin)
+            students = students.annotate(
+                filtered_points=Count(
+                    'attendances',
+                    filter=models.Q(
+                        Q(attendances__event__organization=admin_profile.role) |
+                        Q(attendances__event__event_organizations__organization__name=admin_profile.role),
                         attendances__event__date__gte=academic_year_start
                     )
                 )
@@ -693,18 +706,7 @@ def student_points(request):
     
     else:  # 'all'
         # For organization filtering, we need to check both primary and secondary organizations
-        if admin_profile and admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
-            # Filter by organization (primary or secondary)
-            students = students.annotate(
-                filtered_points=Count(
-                    'attendances',
-                    filter=models.Q(
-                        Q(attendances__event__organization=admin_profile.role) |
-                        Q(attendances__event__event_organizations__organization__name=admin_profile.role)
-                    )
-                )
-            )
-        elif admin_profile and admin_profile.role in ['Super Admin', 'DAISSA', 'Faculty'] and organization_filter:
+        if organization_filter:
             # Filter by organization parameter (primary or secondary)
             students = students.annotate(
                 filtered_points=Count(
@@ -712,6 +714,17 @@ def student_points(request):
                     filter=models.Q(
                         Q(attendances__event__organization=organization_filter) |
                         Q(attendances__event__event_organizations__organization__name=organization_filter)
+                    )
+                )
+            )
+        elif admin_profile and admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
+            # Filter by organization (primary or secondary) (for authenticated non-super-admin)
+            students = students.annotate(
+                filtered_points=Count(
+                    'attendances',
+                    filter=models.Q(
+                        Q(attendances__event__organization=admin_profile.role) |
+                        Q(attendances__event__event_organizations__organization__name=admin_profile.role)
                     )
                 )
             )
