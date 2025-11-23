@@ -210,7 +210,7 @@ def process_onetap_checkin(participant_data, profile_data, list_data):
                 'student': {
                     'id': student.id,
                     'name': f"{student.first_name} {student.last_name}",
-                    'email': student.email,
+                    'email': student.user.email,
                     'a_number': a_number
                 },
                 'event': {
@@ -264,9 +264,10 @@ def create_or_find_student(first_name, last_name, email, a_number, phone):
                 counter += 1
             
             # Create user account with password "changeme!"
+            # Use the email parameter passed to the outer function
             user = User.objects.create_user(
                 username=username,
-                email=student.email,
+                email=email,  # Use email from outer function scope
                 password='changeme!',
                 first_name=student.first_name,
                 last_name=student.last_name,
@@ -277,17 +278,17 @@ def create_or_find_student(first_name, last_name, email, a_number, phone):
             student.user = user
             student.save()
             
-            logger.info(f"Created missing user for student {student.first_name} {student.last_name}: username={username}")
+            logger.info(f"Created missing user for student {student.first_name} {student.last_name}: username={username}, email={user.email}")
             return student
         return student
     
     # Get username from email handle (part before @)
     email_handle = email.split('@')[0] if '@' in email else email
     
-    # Try to find existing student by email first
+    # Try to find existing student by email first (email is on the User model)
     student = None
     try:
-        student = Student.objects.get(email=email)
+        student = Student.objects.get(user__email=email)
         logger.info(f"Found existing student by email: {student.first_name} {student.last_name}")
         # Ensure student has a user
         student = ensure_student_has_user(student, email_handle)
@@ -334,6 +335,11 @@ def create_or_find_student(first_name, last_name, email, a_number, phone):
     if User.objects.filter(email=email).exists():
         user = User.objects.get(email=email)
         logger.info(f"Found existing user by email: {user.username}")
+        # Check if student profile already exists for this user
+        if Student.objects.filter(user=user).exists():
+            student = Student.objects.get(user=user)
+            logger.info(f"Found existing student profile for user: {student.first_name} {student.last_name}")
+            return student
     else:
         # Create user account with password "changeme!"
         user = User.objects.create_user(
@@ -346,18 +352,11 @@ def create_or_find_student(first_name, last_name, email, a_number, phone):
         )
         logger.info(f"Created new user: {user.username}")
     
-    # Check if student profile already exists for this user
-    if Student.objects.filter(user=user).exists():
-        student = Student.objects.get(user=user)
-        logger.info(f"Found existing student profile for user: {student.first_name} {student.last_name}")
-        return student
-    
-    # Create student profile
+    # Create student profile (user is guaranteed to exist at this point)
     student = Student.objects.create(
         user=user,
         first_name=first_name,
         last_name=last_name,
-        email=email,
         username=username
     )
     

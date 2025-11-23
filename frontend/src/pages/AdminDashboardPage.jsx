@@ -23,14 +23,6 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 
-// Add this constant at the top of the file, outside the component
-const EVENT_TYPE_COLORS = {
-  1: 'hsl(220, 70%, 50%)',  // Innovation Studio - blue
-  2: 'hsl(150, 70%, 50%)',  // Workshop - green
-  3: 'hsl(280, 70%, 50%)',  // Five-Slide Friday - purple
-  4: 'hsl(340, 70%, 50%)',  // Competition - red
-  5: 'hsl(40, 70%, 50%)',   // Other - orange
-}
 
 function AdminDashboardPage() {
   const [students, setStudents] = useState([])
@@ -38,9 +30,6 @@ function AdminDashboardPage() {
   const [participatingStudents, setParticipatingStudents] = useState(0)
   const [filter, setFilter] = useState("semester")
   const [attendanceData, setAttendanceData] = useState([])
-  const [eventTypes, setEventTypes] = useState({})
-  const [uniqueEventTypes, setUniqueEventTypes] = useState([])
-  const [selectedEventType, setSelectedEventType] = useState([])
   const [organizations, setOrganizations] = useState([])
   const [selectedOrganization, setSelectedOrganization] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
@@ -56,7 +45,7 @@ function AdminDashboardPage() {
     fetchEventData()
     fetchAttendanceData()
     fetchOrganizations()
-  }, [filter, selectedEventType, selectedOrganization])
+  }, [filter, selectedOrganization])
 
   const fetchStudentData = async () => {
     try {
@@ -147,31 +136,10 @@ function AdminDashboardPage() {
 
   const fetchEventData = async () => {
     try {
-      const [eventsResponse, eventTypesResponse] = await Promise.all([
-        axios.get(`${API_URL}/api/events`),
-        axios.get(`${API_URL}/api/events/types`)
-      ])
+      const eventsResponse = await axios.get(`${API_URL}/api/events`)
       
       // Store all events for lookup when clicking chart points
       setAllEvents(eventsResponse.data)
-      
-      // Create a map of event IDs to their types
-      const eventTypeMap = eventsResponse.data.reduce((acc, event) => {
-        acc[event.id] = {
-          type_id: event.event_type,
-          type_name: event.event_type,
-          date: event.date.split('T')[0],
-          name: event.name,
-          organization: event.organization,
-          event_type: event.event_type,
-          fullEvent: event // Store full event object for dialog
-        }
-        return acc
-      }, {})
-      setEventTypes(eventTypeMap)
-      
-      // Store unique event types from the new endpoint
-      setUniqueEventTypes(eventTypesResponse.data)
     } catch (error) {
       console.error('Error fetching event data:', error)
     }
@@ -188,116 +156,108 @@ function AdminDashboardPage() {
 
   const fetchAttendanceData = async () => {
     try {
-      const response = await axios.get(`${API_URL}/api/attendance`)
+      const [attendanceResponse, eventsResponse] = await Promise.all([
+        axios.get(`${API_URL}/api/attendance`),
+        axios.get(`${API_URL}/api/events`)
+      ])
       
-      // Group attendance by event type and date, storing event IDs for each point
-      const groupedData = response.data.reduce((acc, record) => {
-        const eventInfo = eventTypes[record.event]
+      // Create a map of event IDs to dates
+      const eventDateMap = eventsResponse.data.reduce((acc, event) => {
+        acc[event.id] = {
+          date: event.date.split('T')[0],
+          name: event.name,
+          organization: event.organization,
+          fullEvent: event
+        }
+        return acc
+      }, {})
+      
+      // Group attendance by date, storing event IDs for each point
+      const groupedData = attendanceResponse.data.reduce((acc, record) => {
+        const eventInfo = eventDateMap[record.event]
         if (!eventInfo) return acc // Skip if no event info
         
         const date = eventInfo.date
-        const typeId = eventInfo.type_id
-        const typeName = eventInfo.type_name
         
-        // Check if this event type is selected
-        if (selectedEventType && selectedEventType.length > 0 && !selectedEventType.includes(typeName)) {
-          return acc
-        }
-        
-        if (!acc[typeId]) {
-          acc[typeId] = {
-            event_type: typeName,
-            dates: {},
-          }
-        }
-        
-        if (!acc[typeId].dates[date]) {
-          acc[typeId].dates[date] = {
+        if (!acc[date]) {
+          acc[date] = {
             count: 0,
             eventIds: [] // Store event IDs for this date
           }
         }
         
-        acc[typeId].dates[date].count++
+        acc[date].count++
         // Store event ID if not already stored (avoid duplicates)
-        if (!acc[typeId].dates[date].eventIds.includes(record.event)) {
-          acc[typeId].dates[date].eventIds.push(record.event)
+        if (!acc[date].eventIds.includes(record.event)) {
+          acc[date].eventIds.push(record.event)
         }
         return acc
       }, {})
 
       // Transform into the format needed for the chart
-      const transformedData = Object.values(groupedData).map(typeData => ({
-        event_type: typeData.event_type,
-        dates: Object.keys(typeData.dates),
-        attendance_counts: Object.values(typeData.dates).map(d => d.count || d), // Handle both old and new format
-        eventIdsByDate: Object.keys(typeData.dates).reduce((acc, date) => {
-          acc[date] = typeData.dates[date].eventIds || []
-          return acc
-        }, {})
-      }))
+      const dates = Object.keys(groupedData).sort((a, b) => new Date(a) - new Date(b))
+      const attendance_counts = dates.map(date => groupedData[date].count)
+      const eventIdsByDate = dates.reduce((acc, date) => {
+        acc[date] = groupedData[date].eventIds || []
+        return acc
+      }, {})
 
-      setAttendanceData(transformedData)
+      setAttendanceData({
+        dates,
+        attendance_counts,
+        eventIdsByDate
+      })
     } catch (error) {
       console.error('Error fetching attendance data:', error)
     }
   }
 
   const chartData = {
-    labels: [...new Set(attendanceData.flatMap(data => data.dates))]
-      .sort((a, b) => new Date(a) - new Date(b)),
-    datasets: attendanceData.map((eventData, index) => {
-      // Sort the data points by date
-      const sortedData = eventData.dates
-        .map((date, dateIndex) => {
-          // Get event IDs for this date
-          const eventIds = eventData.eventIdsByDate?.[date] || []
-          // Parse date properly - handle ISO format or date string
-          let dateObj
-          try {
-            // Try parsing as ISO string first
-            dateObj = new Date(date)
-            // If invalid, try adding time if it's just a date
-            if (isNaN(dateObj.getTime()) && date.match(/^\d{4}-\d{2}-\d{2}$/)) {
-              dateObj = new Date(date + 'T00:00:00')
-            }
-            // If still invalid, use current date as fallback
-            if (isNaN(dateObj.getTime())) {
-              console.warn('Invalid date:', date)
-              dateObj = new Date()
-            }
-          } catch (e) {
-            console.warn('Error parsing date:', date, e)
+    labels: attendanceData.dates || [],
+    datasets: [{
+      label: 'Attendance',
+      data: (attendanceData.dates || []).map((date, index) => {
+        // Get event IDs for this date
+        const eventIds = attendanceData.eventIdsByDate?.[date] || []
+        // Parse date properly - handle ISO format or date string
+        let dateObj
+        try {
+          // Try parsing as ISO string first
+          dateObj = new Date(date)
+          // If invalid, try adding time if it's just a date
+          if (isNaN(dateObj.getTime()) && date.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            dateObj = new Date(date + 'T00:00:00')
+          }
+          // If still invalid, use current date as fallback
+          if (isNaN(dateObj.getTime())) {
+            console.warn('Invalid date:', date)
             dateObj = new Date()
           }
-          
-          return {
-            x: dateObj,
-            y: eventData.attendance_counts[dateIndex],
-            eventIds: eventIds, // Store event IDs with each point
-            date: date // Store original date string for display
-          }
-        })
-        .sort((a, b) => a.x - b.x)
-      
-      return {
-        label: eventData.event_type || 'Unknown Event Type',
-        data: sortedData,
-        fill: false,
-        borderColor: EVENT_TYPE_COLORS[index] || `hsl(${index * 60}, 70%, 50%)`,
-        tension: 0,
-        spanGaps: true
-      }
-    })
+        } catch (e) {
+          console.warn('Error parsing date:', date, e)
+          dateObj = new Date()
+        }
+        
+        return {
+          x: dateObj,
+          y: attendanceData.attendance_counts?.[index] || 0,
+          eventIds: eventIds, // Store event IDs with each point
+          date: date // Store original date string for display
+        }
+      }).sort((a, b) => a.x - b.x),
+      fill: false,
+      borderColor: 'hsl(220, 70%, 50%)',
+      tension: 0,
+      spanGaps: true
+    }]
   }
 
   const handleChartClick = (event, elements) => {
     if (elements.length === 0) return
     
     const element = elements[0]
-    const datasetIndex = element.datasetIndex
     const index = element.index
-    const point = chartData.datasets[datasetIndex].data[index]
+    const point = chartData.datasets[0].data[index]
     
     // Get the first event ID from the clicked point
     if (point.eventIds && point.eventIds.length > 0) {
@@ -535,31 +495,11 @@ function AdminDashboardPage() {
           <Card>
             <CardHeader>
               <CardTitle>Attendance Trends</CardTitle>
-              <CardDescription>Event attendance over time by event type</CardDescription>
-              <div className="flex justify-end space-x-2 mt-4">
-                <Select
-                  value={selectedEventType.length > 0 ? selectedEventType[0] : ""}
-                  onValueChange={(value) => setSelectedEventType([value])}
-                >
-                  <SelectTrigger className="w-[280px]">
-                    <SelectValue placeholder="Select an Event Type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {uniqueEventTypes.map((type, index) => (
-                      <SelectItem 
-                        key={`event-type-${index}`} 
-                        value={type}
-                      >
-                        {type}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <CardDescription>Event attendance over time</CardDescription>
             </CardHeader>
             <CardContent>
               <div style={{ height: '400px' }}>
-                <Line key={`chart-${selectedEventType}`} data={chartData} options={chartOptions} />
+                <Line data={chartData} options={chartOptions} />
               </div>
             </CardContent>
           </Card>
@@ -581,10 +521,6 @@ function AdminDashboardPage() {
                 <div>
                   <h4 className="font-semibold text-sm text-gray-600">Organization</h4>
                   <p className="text-sm">{selectedEvent.organization}</p>
-                </div>
-                <div>
-                  <h4 className="font-semibold text-sm text-gray-600">Event Type</h4>
-                  <p className="text-sm">{selectedEvent.event_type}</p>
                 </div>
                 <div>
                   <h4 className="font-semibold text-sm text-gray-600">Date & Time</h4>

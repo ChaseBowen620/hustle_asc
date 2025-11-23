@@ -1288,3 +1288,87 @@ Traceback (most recent call last):
   File "/home/ubuntu/.venv/lib/python3.12/site-packages/django/db/models/sql/query.py", line 1725, in names_to_path
     raise FieldError(
 django.core.exceptions.FieldError: Cannot resolve keyword 'email' into field. Choices are: attendances, cached_attendance_count, created_at, first_name, id, last_attendance_update, last_name, teachingassistant, user, user_id, username
+2025-11-23 03:32:37,647 INFO REQUEST POST /api/webhook/onetap-handler/ Headers={'Content-Type': 'application/json', 'User-Agent': 'OneTap-Webhooks/1.0', 'X-Onetap-Event': 'participant.checkin', 'X-Onetap-Organization': 'dml3yomDR5', 'X-Onetap-Integration': 'IfAQPyCmns', 'X-Onetap-Timestamp': '2025-11-23T03:32:37.514Z', 'X-Onetap-Signature': 'sha256=14e754cbe0ca831de70500eccb6293f64974ddde57948c8aff181e011a0e01ba', 'Accept': '*/*', 'Content-Length': '572', 'Accept-Encoding': 'gzip,deflate', 'Host': '52.8.4.183:8000', 'Connection': 'keep-alive'} Body={"event":"participant.checkin","timestamp":"2025-11-23T03:32:37.514Z","organizationId":"dml3yomDR5","integrationId":"IfAQPyCmns","data":{"participant":{"id":"hsohR9kuqM","checkedIn":true,"checkedOut":false,"checkInDate":"2025-11-23T03:32:37.436Z","checkInMethod":"tap","createdAt":"2025-11-23T03:32:33.221Z","updatedAt":"2025-11-23T03:32:37.437Z"},"profile":{"id":"mH0aPP16K4","name":"Ryan Cheney","email":"a02236424@usu.edu","customFields":{"A-Number":"A02236424"}},"list":{"id":"4clJnaThl1","name":"ASC - Test Event","date":"2025-11-23T03:31:54.000Z","description":""}}}
+2025-11-23 03:32:37,657 ERROR ERROR Cannot resolve keyword 'email' into field. Choices are: attendances, cached_attendance_count, created_at, first_name, id, last_attendance_update, last_name, teachingassistant, user, user_id, username
+Traceback (most recent call last):
+  File "/home/ubuntu/hustle_asc/backend/api/onetap_webhook_handler.py", line 126, in onetap_webhook_handler
+    result = process_onetap_checkin(participant_data, profile_data, list_data)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/hustle_asc/backend/api/onetap_webhook_handler.py", line 193, in process_onetap_checkin
+    student = create_or_find_student(
+              ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/hustle_asc/backend/api/onetap_webhook_handler.py", line 290, in create_or_find_student
+    student = Student.objects.get(email=email)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/.venv/lib/python3.12/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/.venv/lib/python3.12/site-packages/django/db/models/query.py", line 623, in get
+    clone = self._chain() if self.query.combinator else self.filter(*args, **kwargs)
+                                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/.venv/lib/python3.12/site-packages/django/db/models/query.py", line 1436, in filter
+    return self._filter_or_exclude(False, args, kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/.venv/lib/python3.12/site-packages/django/db/models/query.py", line 1454, in _filter_or_exclude
+    clone._filter_or_exclude_inplace(negate, args, kwargs)
+  File "/home/ubuntu/.venv/lib/python3.12/site-packages/django/db/models/query.py", line 1461, in _filter_or_exclude_inplace
+    self._query.add_q(Q(*args, **kwargs))
+  File "/home/ubuntu/.venv/lib/python3.12/site-packages/django/db/models/sql/query.py", line 1546, in add_q
+    clause, _ = self._add_q(q_object, self.used_aliases)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/.venv/lib/python3.12/site-packages/django/db/models/sql/query.py", line 1577, in _add_q
+    child_clause, needed_inner = self.build_filter(
+                                 ^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/.venv/lib/python3.12/site-packages/django/db/models/sql/query.py", line 1427, in build_filter
+    lookups, parts, reffed_expression = self.solve_lookup_type(arg, summarize)
+                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/.venv/lib/python3.12/site-packages/django/db/models/sql/query.py", line 1237, in solve_lookup_type
+    _, field, _, lookup_parts = self.names_to_path(lookup_splitted, self.get_meta())
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/.venv/lib/python3.12/site-packages/django/db/models/sql/query.py", line 1725, in names_to_path
+    raise FieldError(
+django.core.exceptions.FieldError: Cannot resolve keyword 'email' into field. Choices are: attendances, cached_attendance_count, created_at, first_name, id, last_attendance_update, last_name, teachingassistant, user, user_id, username
+2025-11-23 03:34:38,554 INFO REQUEST POST /api/webhook/onetap-handler/ Headers={'Content-Type': 'application/json', 'User-Agent': 'OneTap-Webhooks/1.0', 'X-Onetap-Event': 'participant.checkin', 'X-Onetap-Organization': 'dml3yomDR5', 'X-Onetap-Integration': 'IfAQPyCmns', 'X-Onetap-Timestamp': '2025-11-23T03:34:38.437Z', 'X-Onetap-Signature': 'sha256=1cb1676ecb240168869b51449f095e8b598a8ecd1c13aafeba66f9ff0db454f0', 'Accept': '*/*', 'Content-Length': '596', 'Accept-Encoding': 'gzip,deflate', 'Host': '52.8.4.183:8000', 'Connection': 'keep-alive'} Body={"event":"participant.checkin","timestamp":"2025-11-23T03:34:38.437Z","organizationId":"dml3yomDR5","integrationId":"IfAQPyCmns","data":{"participant":{"id":"29t2GTJBHF","checkedIn":true,"checkedOut":false,"checkInDate":"2025-11-23T03:34:38.375Z","checkInMethod":"tap","createdAt":"2025-11-23T03:34:36.561Z","updatedAt":"2025-11-23T03:34:38.376Z"},"profile":{"id":"fbDBvgpZfz","name":"Stephen Parker","email":"a02423584@usu.edu","phone":"7025243651","customFields":{"A-Number":"A02423584"}},"list":{"id":"4clJnaThl1","name":"ASC - Test Event","date":"2025-11-23T03:31:54.000Z","description":""}}}
+2025-11-23 03:34:38,562 ERROR ERROR Cannot resolve keyword 'email' into field. Choices are: attendances, cached_attendance_count, created_at, first_name, id, last_attendance_update, last_name, teachingassistant, user, user_id, username
+Traceback (most recent call last):
+  File "/home/ubuntu/hustle_asc/backend/api/onetap_webhook_handler.py", line 126, in onetap_webhook_handler
+    result = process_onetap_checkin(participant_data, profile_data, list_data)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/hustle_asc/backend/api/onetap_webhook_handler.py", line 193, in process_onetap_checkin
+    student = create_or_find_student(
+              ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/hustle_asc/backend/api/onetap_webhook_handler.py", line 290, in create_or_find_student
+    student = Student.objects.get(email=email)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/.venv/lib/python3.12/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/.venv/lib/python3.12/site-packages/django/db/models/query.py", line 623, in get
+    clone = self._chain() if self.query.combinator else self.filter(*args, **kwargs)
+                                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/.venv/lib/python3.12/site-packages/django/db/models/query.py", line 1436, in filter
+    return self._filter_or_exclude(False, args, kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/.venv/lib/python3.12/site-packages/django/db/models/query.py", line 1454, in _filter_or_exclude
+    clone._filter_or_exclude_inplace(negate, args, kwargs)
+  File "/home/ubuntu/.venv/lib/python3.12/site-packages/django/db/models/query.py", line 1461, in _filter_or_exclude_inplace
+    self._query.add_q(Q(*args, **kwargs))
+  File "/home/ubuntu/.venv/lib/python3.12/site-packages/django/db/models/sql/query.py", line 1546, in add_q
+    clause, _ = self._add_q(q_object, self.used_aliases)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/.venv/lib/python3.12/site-packages/django/db/models/sql/query.py", line 1577, in _add_q
+    child_clause, needed_inner = self.build_filter(
+                                 ^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/.venv/lib/python3.12/site-packages/django/db/models/sql/query.py", line 1427, in build_filter
+    lookups, parts, reffed_expression = self.solve_lookup_type(arg, summarize)
+                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/.venv/lib/python3.12/site-packages/django/db/models/sql/query.py", line 1237, in solve_lookup_type
+    _, field, _, lookup_parts = self.names_to_path(lookup_splitted, self.get_meta())
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/.venv/lib/python3.12/site-packages/django/db/models/sql/query.py", line 1725, in names_to_path
+    raise FieldError(
+django.core.exceptions.FieldError: Cannot resolve keyword 'email' into field. Choices are: attendances, cached_attendance_count, created_at, first_name, id, last_attendance_update, last_name, teachingassistant, user, user_id, username
+2025-11-23 03:36:22,736 INFO REQUEST POST /api/webhook/onetap-handler/ Headers={'Content-Type': 'application/json', 'User-Agent': 'OneTap-Webhooks/1.0', 'X-Onetap-Event': 'participant.checkin', 'X-Onetap-Organization': 'dml3yomDR5', 'X-Onetap-Integration': 'IfAQPyCmns', 'X-Onetap-Timestamp': '2025-11-23T03:36:22.518Z', 'X-Onetap-Signature': 'sha256=ccd1753ea96d6578fecd8b2106de69b54d11b065446c8815cf8334cff1c159c9', 'Accept': '*/*', 'Content-Length': '593', 'Accept-Encoding': 'gzip,deflate', 'Host': '52.8.4.183:8000', 'Connection': 'keep-alive'} Body={"event":"participant.checkin","timestamp":"2025-11-23T03:36:22.518Z","organizationId":"dml3yomDR5","integrationId":"IfAQPyCmns","data":{"participant":{"id":"CI3zujIy4r","checkedIn":true,"checkedOut":false,"checkInDate":"2025-11-23T03:36:22.459Z","checkInMethod":"tap","createdAt":"2025-11-23T03:36:20.857Z","updatedAt":"2025-11-23T03:36:22.460Z"},"profile":{"id":"rtPMmu0lNR","name":"Kylie Evans","email":"a02362427@usu.edu","phone":"2082273489","customFields":{"A-Number":"A02362427"}},"list":{"id":"4clJnaThl1","name":"ASC - Test Event","date":"2025-11-23T03:31:54.000Z","description":""}}}
+2025-11-23 03:36:22,765 INFO SUCCESS student={'id': 343, 'name': 'Kylie Evans', 'email': 'a02362427@usu.edu', 'a_number': 'A02362427'} event={'id': 147, 'name': 'ASC - Test Event', 'date': '2025-11-23T03:31:54+00:00', 'location': 'ASC Space'} attendance={'id': 2972, 'checked_in_at': '2025-11-23T03:36:22.751396+00:00'}
+2025-11-23 22:08:22,128 INFO REQUEST POST /api/webhook/onetap-handler/ Headers={'Content-Type': 'application/json', 'User-Agent': 'OneTap-Webhooks/1.0', 'X-Onetap-Event': 'participant.checkin', 'X-Onetap-Organization': 'dml3yomDR5', 'X-Onetap-Integration': 'IfAQPyCmns', 'X-Onetap-Timestamp': '2025-11-23T22:08:22.003Z', 'X-Onetap-Signature': 'sha256=f5951d07809fd8b55ad923484063c732653e55cbf788541addf71e8ca2629ca3', 'Accept': '*/*', 'Content-Length': '561', 'Accept-Encoding': 'gzip,deflate', 'Host': '52.8.4.183:8000', 'Connection': 'keep-alive'} Body={"event":"participant.checkin","timestamp":"2025-11-23T22:08:22.003Z","organizationId":"dml3yomDR5","integrationId":"IfAQPyCmns","data":{"participant":{"id":"5wM3q3IfaP","checkedIn":true,"checkedOut":false,"checkInDate":"2025-11-23T22:08:21.931Z","checkInMethod":"tap","createdAt":"2025-11-23T22:08:18.840Z","updatedAt":"2025-11-23T22:08:21.932Z"},"profile":{"id":"mH0aPP16K4","name":"Ryan Cheney","email":"a02236424@usu.edu","customFields":{"A-Number":"A02236424"}},"list":{"id":"YXQMzgA9iB","name":"test5","date":"2025-11-23T22:07:59.000Z","description":""}}}
+2025-11-23 22:08:22,158 INFO SUCCESS student={'id': 2, 'name': 'Ryan Cheney', 'email': 'a02236424@usu.edu', 'a_number': 'A02236424'} event={'id': 148, 'name': 'test5', 'date': '2025-11-23T22:07:59+00:00', 'location': 'ASC Space'} attendance={'id': 2973, 'checked_in_at': '2025-11-23T22:08:22.143141+00:00'}
