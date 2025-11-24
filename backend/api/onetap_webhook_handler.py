@@ -164,9 +164,20 @@ def process_onetap_checkin(participant_data, profile_data, list_data):
             last_name = ''
         
         # Extract event information
-        event_name = list_data.get('name', '').strip()
+        raw_event_name = list_data.get('name', '').strip()
         event_date_str = list_data.get('date', '')
         event_description = list_data.get('description', '')
+        
+        # Parse event name: format is "Organization - Event Name"
+        # Split on " - " (space hyphen space) to separate organization and event name
+        if ' - ' in raw_event_name:
+            parts = raw_event_name.split(' - ', 1)  # Split only on first occurrence
+            organization = parts[0].strip()
+            event_name = parts[1].strip() if len(parts) > 1 else raw_event_name
+        else:
+            # If no " - " found, use the full name as event name and default organization
+            organization = None  # Will be set to default in create_or_find_event
+            event_name = raw_event_name
         
         # Parse event date
         try:
@@ -196,7 +207,7 @@ def process_onetap_checkin(participant_data, profile_data, list_data):
         
         # Step 2: Create or find event
         event = create_or_find_event(
-            event_name, event_date, event_description
+            event_name, event_date, event_description, organization
         )
         
         # Step 3: Create attendance record
@@ -363,7 +374,7 @@ def create_or_find_student(first_name, last_name, email, a_number, phone):
     logger.info(f"Created new student: {student.first_name} {student.last_name} ({email})")
     return student
 
-def create_or_find_event(event_name, event_date, event_description):
+def create_or_find_event(event_name, event_date, event_description, organization=None):
     """Create or find an event based on OneTap list data."""
     
     # Try to find existing event by name and date
@@ -373,40 +384,27 @@ def create_or_find_event(event_name, event_date, event_description):
             date__date=event_date.date()
         )
         logger.info(f"Found existing event: {event.name} on {event.date}")
+        # Update organization if provided and different
+        if organization and event.organization != organization:
+            event.organization = organization
+            event.event_type = organization  # Map event type to organization as well
+            event.save()
+            logger.info(f"Updated event organization to: {organization}")
         return event
     except Event.DoesNotExist:
         pass
     
     # Create new event
     
-    # Get unique organizations and event types from database
-    existing_organizations = list(Event.objects.values_list('organization', flat=True).distinct())
-    existing_event_types = list(Event.objects.values_list('event_type', flat=True).distinct())
+    # Use provided organization or default to 'ASC'
+    if not organization:
+        organization = 'ASC'  # Default organization
     
-    logger.info(f"Available organizations: {existing_organizations}")
-    logger.info(f"Available event types: {existing_event_types}")
+    # Map event type to organization (as per user request)
+    event_type = organization
+    
     logger.info(f"Processing event name: '{event_name}'")
-    
-    # Extract organization from event name (case-sensitive)
-    organization = 'ASC'  # Default organization
-    
-    for org in existing_organizations:
-        if org and org in event_name:  # Case-sensitive match
-            organization = org
-            logger.info(f"Matched organization: {org}")
-            break
-    
-    # Check if event name contains any of the existing event types
-    event_name_lower = event_name.lower()
-    event_type = 'General'  # Default value
-    
-    for existing_type in existing_event_types:
-        if existing_type and existing_type.lower() in event_name_lower:
-            event_type = existing_type
-            logger.info(f"Matched event type: {existing_type}")
-            break
-    
-    logger.info(f"Final organization: {organization}, event_type: {event_type}")
+    logger.info(f"Organization: {organization}, event_type: {event_type}")
     
     # Get current semester (or create a default one)
     current_semester = Semester.objects.filter(is_current=True).first()

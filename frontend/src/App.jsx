@@ -1,4 +1,5 @@
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from "react-router-dom"
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom"
+import { useState, useEffect } from "react"
 import Layout from "./components/Layout"
 import Navbar from "./components/Navbar"
 import PublicNavbar from "./components/PublicNavbar"
@@ -21,15 +22,14 @@ function PrivateRoute({ children }) {
   return user ? children : <Navigate to="/login" />
 }
 
-function AppContent() {
+function App() {
   const { user, isAdmin } = useAuth()
   const userIsAdmin = isAdmin(user)
-  const location = useLocation()
-  const isLoginPage = location.pathname === '/login'
 
   return (
-    <div>
-      {user ? <Navbar /> : (isLoginPage ? null : <PublicNavbar />)}
+    <Router>
+      <div>
+        {user ? <Navbar /> : <PublicNavbar />}
         <Routes>
           <Route element={<Layout />}>
             {/* Public routes */}
@@ -39,7 +39,7 @@ function AppContent() {
                 user ? (
                   <Navigate to={userIsAdmin ? "/admin/dashboard" : "/dashboard"} replace />
                 ) : (
-                  <LandingPage />
+                  <Navigate to="/login" replace />
                 )
               } 
             />
@@ -85,13 +85,6 @@ function AppContent() {
         </Routes>
         <Toaster />
       </div>
-  )
-}
-
-function App() {
-  return (
-    <Router>
-      <AppContent />
     </Router>
   )
 }

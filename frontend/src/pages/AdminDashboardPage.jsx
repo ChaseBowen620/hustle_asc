@@ -35,9 +35,6 @@ function AdminDashboardPage() {
   const [selectedOrganization, setSelectedOrganization] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
   const studentsPerPage = 10
-  const [selectedEvent, setSelectedEvent] = useState(null)
-  const [showEventDetails, setShowEventDetails] = useState(false)
-  const [allEvents, setAllEvents] = useState([]) // Store all events for lookup
   const [selectedStudent, setSelectedStudent] = useState(null)
   const [showStudentDetails, setShowStudentDetails] = useState(false)
   const [studentAttendanceByOrg, setStudentAttendanceByOrg] = useState(null)
@@ -47,7 +44,6 @@ function AdminDashboardPage() {
 
   useEffect(() => {
     fetchStudentData()
-    fetchEventData()
     fetchAttendanceData()
     fetchOrganizations()
   }, [filter, selectedOrganization])
@@ -154,16 +150,6 @@ function AdminDashboardPage() {
     }
   }
 
-  const fetchEventData = async () => {
-    try {
-      const eventsResponse = await axios.get(`${API_URL}/api/events`)
-      
-      // Store all events for lookup when clicking chart points
-      setAllEvents(eventsResponse.data)
-    } catch (error) {
-      console.error('Error fetching event data:', error)
-    }
-  }
 
   const fetchStudentAttendanceByOrg = async (studentId) => {
     try {
@@ -318,7 +304,7 @@ function AdminDashboardPage() {
       // Get list of filtered event IDs
       const filteredEventIds = new Set(filteredEvents.map(e => e.id))
       
-      // Group attendance by date, storing event IDs for each point
+      // Group attendance by date, storing event IDs and names for each point
       // Only include attendance records for filtered events
       const groupedData = attendanceResponse.data.reduce((acc, record) => {
         // Skip if event is not in the filtered list
@@ -332,14 +318,16 @@ function AdminDashboardPage() {
         if (!acc[date]) {
           acc[date] = {
             count: 0,
-            eventIds: [] // Store event IDs for this date
+            eventIds: [], // Store event IDs for this date
+            eventNames: [] // Store event names for this date
           }
         }
         
         acc[date].count++
-        // Store event ID if not already stored (avoid duplicates)
+        // Store event ID and name if not already stored (avoid duplicates)
         if (!acc[date].eventIds.includes(record.event)) {
           acc[date].eventIds.push(record.event)
+          acc[date].eventNames.push(eventInfo.name)
         }
         return acc
       }, {})
@@ -351,11 +339,16 @@ function AdminDashboardPage() {
         acc[date] = groupedData[date].eventIds || []
         return acc
       }, {})
+      const eventNamesByDate = dates.reduce((acc, date) => {
+        acc[date] = groupedData[date].eventNames || []
+        return acc
+      }, {})
 
       setAttendanceData({
         dates,
         attendance_counts,
-        eventIdsByDate
+        eventIdsByDate,
+        eventNamesByDate
       })
     } catch (error) {
       console.error('Error fetching attendance data:', error)
@@ -392,6 +385,7 @@ function AdminDashboardPage() {
           x: dateObj,
           y: attendanceData.attendance_counts?.[index] || 0,
           eventIds: eventIds, // Store event IDs with each point
+          eventNames: attendanceData.eventNamesByDate?.[date] || [], // Store event names with each point
           date: date // Store original date string for display
         }
       }).sort((a, b) => a.x - b.x),
@@ -402,24 +396,6 @@ function AdminDashboardPage() {
     }]
   }
 
-  const handleChartClick = (event, elements) => {
-    if (elements.length === 0) return
-    
-    const element = elements[0]
-    const index = element.index
-    const point = chartData.datasets[0].data[index]
-    
-    // Get the first event ID from the clicked point
-    if (point.eventIds && point.eventIds.length > 0) {
-      const eventId = point.eventIds[0]
-      const clickedEvent = allEvents.find(e => e.id === eventId)
-      
-      if (clickedEvent) {
-        setSelectedEvent(clickedEvent)
-        setShowEventDetails(true)
-      }
-    }
-  }
 
   const chartOptions = {
     responsive: true,
@@ -465,8 +441,16 @@ function AdminDashboardPage() {
                 formattedDate = dateStr
               }
             }
+            
+            // Get event names from the point
+            const eventNames = point.eventNames || []
+            const eventNamesText = eventNames.length > 0 
+              ? eventNames.join(', ') 
+              : 'No events'
+            
             return [
               `Date: ${formattedDate}`,
+              `Event: ${eventNamesText}`,
               `Attendees: ${context.parsed.y}`
             ]
           }
@@ -479,14 +463,9 @@ function AdminDashboardPage() {
       },
       point: {
         radius: 4,
-        hoverRadius: 6,
-        cursor: 'pointer'
+        hoverRadius: 6
       }
     },
-    onClick: handleChartClick,
-    onHover: (event, activeElements) => {
-      event.native.target.style.cursor = activeElements.length > 0 ? 'pointer' : 'default'
-    }
   }
 
 
@@ -704,50 +683,6 @@ function AdminDashboardPage() {
           </Card>
         </TabsContent>
       </Tabs>
-
-      {/* Event Details Dialog */}
-      <Dialog open={showEventDetails} onOpenChange={setShowEventDetails}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>{selectedEvent?.name}</DialogTitle>
-            <DialogDescription>
-              Event details and information
-            </DialogDescription>
-          </DialogHeader>
-          {selectedEvent && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <h4 className="font-semibold text-sm text-gray-600">Organization</h4>
-                  <p className="text-sm">{selectedEvent.organization}</p>
-                </div>
-                <div>
-                  <h4 className="font-semibold text-sm text-gray-600">Date & Time</h4>
-                  <p className="text-sm">{format(new Date(selectedEvent.date), 'EEEE, MMMM d, yyyy h:mm a')}</p>
-                </div>
-                <div>
-                  <h4 className="font-semibold text-sm text-gray-600">Location</h4>
-                  <p className="text-sm">{selectedEvent.location}</p>
-                </div>
-              </div>
-              {selectedEvent.description && (
-                <div>
-                  <h4 className="font-semibold text-sm text-gray-600 mb-2">Description</h4>
-                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{selectedEvent.description}</p>
-                </div>
-              )}
-              {selectedEvent.event_organizations && selectedEvent.event_organizations.length > 0 && (
-                <div>
-                  <h4 className="font-semibold text-sm text-gray-600 mb-2">Additional Organizations</h4>
-                  <p className="text-sm text-gray-700">
-                    {selectedEvent.event_organizations.map(eo => eo.organization_name || eo.organization).join(', ')}
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
 
       {/* Student Details Dialog */}
       <Dialog open={showStudentDetails} onOpenChange={setShowStudentDetails}>

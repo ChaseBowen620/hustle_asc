@@ -604,10 +604,10 @@ def student_points(request):
         ).distinct()
     elif admin_profile and admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
         # If no organization filter but user is authenticated non-super-admin, filter by their role
-        students = students.filter(
-            Q(attendances__event__organization=admin_profile.role) |
-            Q(attendances__event__event_organizations__organization__name=admin_profile.role)
-        ).distinct()
+            students = students.filter(
+                Q(attendances__event__organization=admin_profile.role) |
+                Q(attendances__event__event_organizations__organization__name=admin_profile.role)
+            ).distinct()
     
     # Get current date
     now = timezone.now()

@@ -44,22 +44,18 @@ class EventSerializer(serializers.ModelSerializer):
         ]
     
     def validate_organization(self, value):
-        """Validate that organization exists in AdminUser roles (not just existing events)"""
-        from .models import AdminUser
+        """Validate organization field - allow any string value"""
         if not value:
             return value
         
-        # Check if organization exists as an AdminUser role (excluding Faculty and Super Admin)
-        valid_organizations = AdminUser.objects.exclude(
-            role__in=['Faculty', 'Super Admin']
-        ).values_list('role', flat=True).distinct()
-        
-        if value not in valid_organizations:
+        # Allow any non-empty string value for organization
+        # This allows flexibility for editing and webhook-created events
+        if not isinstance(value, str) or len(value.strip()) == 0:
             raise serializers.ValidationError(
-                f"Organization '{value}' is not a valid club. Please select from existing AdminUser roles."
+                "Organization must be a non-empty string."
             )
         
-        return value
+        return value.strip()
     
     def validate_organizations(self, value):
         """Validate that all organization IDs exist in the Organization table"""
@@ -128,6 +124,10 @@ class EventSerializer(serializers.ModelSerializer):
         logger = logging.getLogger(__name__)
         
         organizations = validated_data.pop('organizations', None)
+        
+        # If organization is being updated, also update event_type to match
+        if 'organization' in validated_data:
+            validated_data['event_type'] = validated_data['organization']
         
         # Update event fields
         for attr, value in validated_data.items():

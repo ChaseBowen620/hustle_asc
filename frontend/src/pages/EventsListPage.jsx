@@ -27,7 +27,7 @@ function EventsListPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedEvent, setSelectedEvent] = useState(null)
   const [showAttendees, setShowAttendees] = useState(false)
-  const [editingEventId, setEditingEventId] = useState(null)
+  const [editingField, setEditingField] = useState(null) // { eventId: number, field: 'organization' | 'name' | 'date' }
   const [editValues, setEditValues] = useState({
     organization: "",
     name: "",
@@ -68,26 +68,38 @@ function EventsListPage() {
 
 
 
-  const handleEditClick = (event) => {
-    setEditingEventId(event.id)
-    // Format date for input (YYYY-MM-DDTHH:mm) - preserve local time
-    const eventDate = new Date(event.date)
-    // Get local date/time components without timezone conversion
-    const year = eventDate.getFullYear()
-    const month = String(eventDate.getMonth() + 1).padStart(2, '0')
-    const day = String(eventDate.getDate()).padStart(2, '0')
-    const hours = String(eventDate.getHours()).padStart(2, '0')
-    const minutes = String(eventDate.getMinutes()).padStart(2, '0')
-    const dateString = `${year}-${month}-${day}T${hours}:${minutes}`
-    setEditValues({
-      organization: event.organization,
-      name: event.name,
-      date: dateString
-    })
+  const handleEditClick = (event, field) => {
+    setEditingField({ eventId: event.id, field })
+    
+    if (field === 'date') {
+      // Format date for input (YYYY-MM-DDTHH:mm) - preserve local time
+      const eventDate = new Date(event.date)
+      // Get local date/time components without timezone conversion
+      const year = eventDate.getFullYear()
+      const month = String(eventDate.getMonth() + 1).padStart(2, '0')
+      const day = String(eventDate.getDate()).padStart(2, '0')
+      const hours = String(eventDate.getHours()).padStart(2, '0')
+      const minutes = String(eventDate.getMinutes()).padStart(2, '0')
+      const dateString = `${year}-${month}-${day}T${hours}:${minutes}`
+      setEditValues({
+        ...editValues,
+        date: dateString
+      })
+    } else if (field === 'organization') {
+      setEditValues({
+        ...editValues,
+        organization: event.organization
+      })
+    } else if (field === 'name') {
+      setEditValues({
+        ...editValues,
+        name: event.name
+      })
+    }
   }
 
   const handleCancelEdit = () => {
-    setEditingEventId(null)
+    setEditingField(null)
     setEditValues({
       organization: "",
       name: "",
@@ -95,8 +107,12 @@ function EventsListPage() {
     })
   }
 
-  const handleSaveEdit = async (eventId) => {
-    if (!editValues.organization.trim()) {
+  const handleSaveEdit = async (eventId, field) => {
+    const event = events.find(e => e.id === eventId)
+    if (!event) return
+
+    // Validate the field being edited
+    if (field === 'organization' && !editValues.organization.trim()) {
       toast({
         title: "Error",
         description: "Event type cannot be empty",
@@ -105,7 +121,7 @@ function EventsListPage() {
       return
     }
 
-    if (!editValues.name.trim()) {
+    if (field === 'name' && !editValues.name.trim()) {
       toast({
         title: "Error",
         description: "Event name cannot be empty",
@@ -114,7 +130,7 @@ function EventsListPage() {
       return
     }
 
-    if (!editValues.date) {
+    if (field === 'date' && !editValues.date) {
       toast({
         title: "Error",
         description: "Event date is required",
@@ -125,42 +141,43 @@ function EventsListPage() {
 
     setIsSaving(true)
     try {
-      // Format date for API - preserve the date/time values as-is
-      // The date and time inputs give us local values, we'll send them directly
-      // Parse the date string (format: YYYY-MM-DDTHH:mm)
-      const [datePart, timePart] = editValues.date.split('T')
-      const [year, month, day] = datePart.split('-')
-      const [hours, minutes] = (timePart || '00:00').split(':')
-      // Format as ISO string (backend will interpret this in its timezone)
-      // We're preserving the exact date/time values the user selected
-      const isoDate = `${year}-${month}-${day}T${hours}:${minutes}:00`
+      // Prepare update payload - only update the field being edited
+      const updatePayload = {}
+      
+      if (field === 'organization') {
+        updatePayload.organization = editValues.organization.trim()
+      } else if (field === 'name') {
+        updatePayload.name = editValues.name.trim()
+      } else if (field === 'date') {
+        // Format date for API - preserve the date/time values as-is
+        const [datePart, timePart] = editValues.date.split('T')
+        const [year, month, day] = datePart.split('-')
+        const [hours, minutes] = (timePart || '00:00').split(':')
+        // Format as ISO string (backend will interpret this in its timezone)
+        const isoDate = `${year}-${month}-${day}T${hours}:${minutes}:00`
+        updatePayload.date = isoDate
+      }
 
       // Update the event via API
-      await axios.patch(`${API_URL}/api/events/${eventId}/`, {
-        organization: editValues.organization.trim(),
-        name: editValues.name.trim(),
-        date: isoDate
-      })
+      await axios.patch(`${API_URL}/api/events/${eventId}/`, updatePayload)
 
       // Update local state
       setEvents(events.map(e => 
         e.id === eventId 
           ? { 
               ...e, 
-              organization: editValues.organization.trim(),
-              name: editValues.name.trim(),
-              date: isoDate
+              ...updatePayload
             }
           : e
       ))
 
-      setEditingEventId(null)
+      setEditingField(null)
       setEditValues({
         organization: "",
         name: "",
         date: ""
       })
-      
+
       toast({
         title: "Success",
         description: "Event updated successfully",
@@ -239,8 +256,8 @@ function EventsListPage() {
       }
 
       // Exit edit mode if we were editing this event
-      if (editingEventId === eventId) {
-        setEditingEventId(null)
+      if (editingField?.eventId === eventId) {
+        setEditingField(null)
         setEditValues({
           organization: "",
           name: "",
@@ -281,74 +298,203 @@ function EventsListPage() {
     <Table>
       <TableHeader>
         <TableRow>
-            <TableHead>Event Type</TableHead>
-            <TableHead>Name</TableHead>
-            <TableHead>Date</TableHead>
-            {showAttendance && <TableHead>Attendance</TableHead>}
-            <TableHead className="w-[100px]">Actions</TableHead>
+          <TableHead>Event Type</TableHead>
+          <TableHead>Name</TableHead>
+          <TableHead>Date</TableHead>
+          {showAttendance && <TableHead>Attendance</TableHead>}
+          <TableHead className="w-[100px]">Actions</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
-        {events.map((event) => (
+        {events.map((event) => {
+          const isEditingOrg = editingField?.eventId === event.id && editingField?.field === 'organization'
+          const isEditingName = editingField?.eventId === event.id && editingField?.field === 'name'
+          const isEditingDate = editingField?.eventId === event.id && editingField?.field === 'date'
+          
+          return (
           <TableRow key={event.id}>
             <TableCell className="font-medium">
-              {editingEventId === event.id ? (
-                <Input
-                  value={editValues.organization}
-                  onChange={(e) => setEditValues({ ...editValues, organization: e.target.value })}
-                  className="w-32"
-                  disabled={isSaving}
-                />
-              ) : (
-                event.organization
-              )}
+              <div className="flex items-center gap-2">
+                {isEditingOrg ? (
+                  <Input
+                    value={editValues.organization}
+                    onChange={(e) => setEditValues({ ...editValues, organization: e.target.value })}
+                    className="w-32"
+                    disabled={isSaving}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        handleSaveEdit(event.id, 'organization')
+                      } else if (e.key === 'Escape') {
+                        handleCancelEdit()
+                      }
+                    }}
+                    autoFocus
+                  />
+                ) : (
+                  <span>{event.organization}</span>
+                )}
+                {isEditingOrg ? (
+                  <div className="flex items-center gap-1">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleSaveEdit(event.id, 'organization')}
+                      disabled={isSaving}
+                      className="h-6 w-6 p-0"
+                      title="Save"
+                    >
+                      <Check className="h-3 w-3 text-green-600" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleCancelEdit}
+                      disabled={isSaving}
+                      className="h-6 w-6 p-0"
+                      title="Cancel"
+                    >
+                      <X className="h-3 w-3 text-red-600" />
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleEditClick(event, 'organization')}
+                    className="h-6 w-6 p-0"
+                    title="Edit Event Type"
+                  >
+                    <Edit2 className="h-3 w-3" />
+                  </Button>
+                )}
+              </div>
             </TableCell>
             <TableCell>
-              {editingEventId === event.id ? (
-                <Input
-                  value={editValues.name}
-                  onChange={(e) => setEditValues({ ...editValues, name: e.target.value })}
-                  className="w-full"
-                  disabled={isSaving}
-                />
-              ) : (
-                event.name
-              )}
+              <div className="flex items-center gap-2">
+                {isEditingName ? (
+                  <Input
+                    value={editValues.name}
+                    onChange={(e) => setEditValues({ ...editValues, name: e.target.value })}
+                    className="flex-1"
+                    disabled={isSaving}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        handleSaveEdit(event.id, 'name')
+                      } else if (e.key === 'Escape') {
+                        handleCancelEdit()
+                      }
+                    }}
+                    autoFocus
+                  />
+                ) : (
+                  <span className="flex-1">{event.name}</span>
+                )}
+                {isEditingName ? (
+                  <div className="flex items-center gap-1">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleSaveEdit(event.id, 'name')}
+                      disabled={isSaving}
+                      className="h-6 w-6 p-0"
+                      title="Save"
+                    >
+                      <Check className="h-3 w-3 text-green-600" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleCancelEdit}
+                      disabled={isSaving}
+                      className="h-6 w-6 p-0"
+                      title="Cancel"
+                    >
+                      <X className="h-3 w-3 text-red-600" />
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleEditClick(event, 'name')}
+                    className="h-6 w-6 p-0"
+                    title="Edit Name"
+                  >
+                    <Edit2 className="h-3 w-3" />
+                  </Button>
+                )}
+              </div>
             </TableCell>
             <TableCell>
-              {editingEventId === event.id ? (
-                <div className="flex gap-2">
-                  <Input
-                    type="date"
-                    value={editValues.date.split('T')[0]}
-                    onChange={(e) => {
-                      const timePart = editValues.date.includes('T') ? editValues.date.split('T')[1] : '00:00'
-                      setEditValues({ ...editValues, date: `${e.target.value}T${timePart}` })
-                    }}
-                    className="flex-1"
-                    disabled={isSaving}
-                  />
-                  <Input
-                    type="time"
-                    value={editValues.date.includes('T') ? editValues.date.split('T')[1] : '00:00'}
-                    onChange={(e) => {
-                      const datePart = editValues.date.split('T')[0]
-                      setEditValues({ ...editValues, date: `${datePart}T${e.target.value}` })
-                    }}
-                    className="flex-1"
-                    disabled={isSaving}
-                  />
-                </div>
-              ) : (
-                <>
-                  <span className="sm:hidden">
-                    {format(new Date(event.date), 'MMM d, yyyy')}
-                  </span>
-                  <span className="hidden sm:inline">
-                    {format(new Date(event.date), 'MMM d, yyyy h:mm a')}
-                  </span>
-                </>
-              )}
+              <div className="flex items-center gap-2">
+                {isEditingDate ? (
+                  <div className="flex gap-2 flex-1">
+                    <Input
+                      type="date"
+                      value={editValues.date.split('T')[0]}
+                      onChange={(e) => {
+                        const timePart = editValues.date.includes('T') ? editValues.date.split('T')[1] : '00:00'
+                        setEditValues({ ...editValues, date: `${e.target.value}T${timePart}` })
+                      }}
+                      className="flex-1"
+                      disabled={isSaving}
+                    />
+                    <Input
+                      type="time"
+                      value={editValues.date.includes('T') ? editValues.date.split('T')[1] : '00:00'}
+                      onChange={(e) => {
+                        const datePart = editValues.date.split('T')[0]
+                        setEditValues({ ...editValues, date: `${datePart}T${e.target.value}` })
+                      }}
+                      className="flex-1"
+                      disabled={isSaving}
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <span className="sm:hidden">
+                      {format(new Date(event.date), 'MMM d, yyyy')}
+                    </span>
+                    <span className="hidden sm:inline">
+                      {format(new Date(event.date), 'MMM d, yyyy h:mm a')}
+                    </span>
+                  </>
+                )}
+                {isEditingDate ? (
+                  <div className="flex items-center gap-1">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleSaveEdit(event.id, 'date')}
+                      disabled={isSaving}
+                      className="h-6 w-6 p-0"
+                      title="Save"
+                    >
+                      <Check className="h-3 w-3 text-green-600" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleCancelEdit}
+                      disabled={isSaving}
+                      className="h-6 w-6 p-0"
+                      title="Cancel"
+                    >
+                      <X className="h-3 w-3 text-red-600" />
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleEditClick(event, 'date')}
+                    className="h-6 w-6 p-0"
+                    title="Edit Date"
+                  >
+                    <Edit2 className="h-3 w-3" />
+                  </Button>
+                )}
+              </div>
             </TableCell>
             {showAttendance && (
               <TableCell>
@@ -370,53 +516,19 @@ function EventsListPage() {
               </TableCell>
             )}
             <TableCell>
-              {editingEventId === event.id ? (
-                <div className="flex items-center gap-1">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handleSaveEdit(event.id)}
-                    disabled={isSaving}
-                    className="h-8 w-8 p-0"
-                    title="Save"
-                  >
-                    <Check className="h-4 w-4 text-green-600" />
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={handleCancelEdit}
-                    disabled={isSaving}
-                    className="h-8 w-8 p-0"
-                    title="Cancel"
-                  >
-                    <X className="h-4 w-4 text-red-600" />
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handleDeleteEvent(event.id)}
-                    disabled={isSaving}
-                    className="h-8 w-8 p-0"
-                    title="Delete"
-                  >
-                    <Trash2 className="h-4 w-4 text-red-600" />
-                  </Button>
-                </div>
-              ) : (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => handleEditClick(event)}
-                  className="h-8 w-8 p-0"
-                  title="Edit"
-                >
-                  <Edit2 className="h-4 w-4" />
-                </Button>
-              )}
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => handleDeleteEvent(event.id)}
+                disabled={isSaving || isEditingOrg || isEditingName || isEditingDate}
+                className="h-8 w-8 p-0"
+                title="Delete Event"
+              >
+                <Trash2 className="h-4 w-4 text-red-600" />
+              </Button>
             </TableCell>
           </TableRow>
-        ))}
+        )})}
       </TableBody>
     </Table>
   )
@@ -437,9 +549,9 @@ function EventsListPage() {
         />
       </div>
 
-      <div className="border rounded-lg">
-        <EventsTable events={filteredEvents} showAttendance={true} />
-      </div>
+          <div className="border rounded-lg">
+            <EventsTable events={filteredEvents} showAttendance={true} />
+          </div>
 
       {/* Attendance Dialog */}
       <Dialog open={showAttendees} onOpenChange={setShowAttendees}>
