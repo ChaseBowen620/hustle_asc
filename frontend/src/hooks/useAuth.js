@@ -29,6 +29,11 @@ const useAuth = create((set) => {
   logout: () => {
     localStorage.removeItem('user')
     set({ user: null })
+  },
+
+  isAdmin: (user) => {
+    // For simplified auth, always return true if user is authenticated
+    return user && user.isAuthenticated
   }
   }
 })
