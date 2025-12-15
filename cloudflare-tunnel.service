@@ -1,0 +1,18 @@
+[Unit]
+Description=Cloudflare Tunnel for Hustle Backend
+After=network.target hustle-backend.service
+Requires=hustle-backend.service
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/hustle_asc
+ExecStart=/usr/local/bin/cloudflared tunnel --url http://localhost:8000
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

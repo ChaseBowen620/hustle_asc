@@ -27,8 +27,8 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-qe#(77o5-q0*6ftwbxo-o
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
-# ALLOWED_HOSTS = ["ec2-52-86-62-188.compute-1.amazonaws.com", "localhost", "0.0.0.0"]
-ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1,.onrender.com,testserver,52.8.4.183,0.0.0.0').split(',')
+# ALLOWED_HOSTS - Configure for EC2 deployment
+ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1,52.8.4.183,ec2-52-8-4-183.us-west-2.compute.amazonaws.com,ec2-52-86-62-188.compute-1.amazonaws.com').split(',')
 
 # Application definition
 
@@ -49,7 +49,6 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
-    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -137,7 +136,23 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 #     "https://data5570-mycode.onrender.com"  # Your Vite frontend URL
 # ]
 
-CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:5173,https://data5570-mycode.onrender.com,http://52.8.4.183:5173,http://52.8.4.183').split(',')
+# CORS settings for EC2 deployment
+CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:5173,http://52.8.4.183:5173,http://ec2-52-86-62-188.compute-1.amazonaws.com:5173').split(',')
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOW_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+CSRF_TRUSTED_ORIGINS = os.environ.get('CSRF_TRUSTED_ORIGINS', 'http://localhost:5173,http://52.8.4.183:5173').split(',')
 
 
 REST_FRAMEWORK = {

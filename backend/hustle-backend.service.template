@@ -1,0 +1,23 @@
+[Unit]
+Description=Hustle Backend Django Application
+After=network.target
+
+[Service]
+Type=notify
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/hustle_asc/backend
+# SECURITY: Set these environment variables with your actual values
+Environment="SECRET_KEY=CHANGE_THIS_TO_YOUR_GENERATED_SECRET_KEY"
+Environment="DEBUG=False"
+Environment="ALLOWED_HOSTS=52.8.4.183,ec2-52-8-4-183.us-west-2.compute.amazonaws.com"
+# Update these after deploying to Vercel with your actual Vercel URL
+Environment="CORS_ALLOWED_ORIGINS=https://your-app.vercel.app"
+Environment="CSRF_TRUSTED_ORIGINS=https://your-app.vercel.app"
+ExecStart=/home/ubuntu/hustle_asc/backend/venv/bin/gunicorn backend.wsgi:application --bind 0.0.0.0:8000 --workers 3
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+
