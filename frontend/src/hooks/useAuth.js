@@ -1,8 +1,8 @@
 import { create } from 'zustand'
 
-// Hardcoded credentials
-const VALID_USERNAME = 'ascslb@usu.edu'
-const VALID_PASSWORD = 'Landlady4-Overspend-Goldmine'
+// Credentials from environment variables
+const VALID_USERNAME = import.meta.env.VITE_LOGIN_USERNAME || 'ascslb@usu.edu'
+const VALID_PASSWORD = import.meta.env.VITE_LOGIN_PASSWORD || 'HelpUniteShareTeachLeadEngage'
 
 const useAuth = create((set) => {
   const storedUser = localStorage.getItem('user')
