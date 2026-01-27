@@ -28,7 +28,7 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-qe#(77o5-q0*6ftwbxo-o
 DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
 # ALLOWED_HOSTS - Configure for EC2 deployment
-ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1,52.8.4.183,ec2-52-8-4-183.us-west-2.compute.amazonaws.com,ec2-52-86-62-188.compute-1.amazonaws.com').split(',')
+ALLOWED_HOSTS = [host.strip() for host in os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1,hustledashboard.com,52.8.4.183,ec2-52-8-4-183.us-west-2.compute.amazonaws.com,ec2-52-86-62-188.compute-1.amazonaws.com').split(',')]
 
 # Application definition
 
@@ -131,13 +131,13 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Add CORS settings
 # CORS_ALLOWED_ORIGINS = [
-#     "http://localhost:5173",
-#     "http://ec2-52-86-62-188.compute-1.amazonaws.com:5173",
+#     "http://localhost:3000",
+#     "http://ec2-52-86-62-188.compute-1.amazonaws.com:3000",
 #     "https://data5570-mycode.onrender.com"  # Your Vite frontend URL
 # ]
 
 # CORS settings for EC2 deployment
-CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:5173,http://52.8.4.183:5173,http://ec2-52-86-62-188.compute-1.amazonaws.com:5173').split(',')
+CORS_ALLOWED_ORIGINS = [origin.strip() for origin in os.environ.get('CORS_ALLOWED_ORIGINS', 'https://hustledashboard.com,http://localhost:3000,http://52.8.4.183:3000,http://ec2-52-86-62-188.compute-1.amazonaws.com:3000').split(',')]
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOW_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
@@ -152,7 +152,12 @@ CORS_ALLOW_HEADERS = [
     'x-csrftoken',
     'x-requested-with',
 ]
-CSRF_TRUSTED_ORIGINS = os.environ.get('CSRF_TRUSTED_ORIGINS', 'http://localhost:5173,http://52.8.4.183:5173').split(',')
+CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in os.environ.get('CSRF_TRUSTED_ORIGINS', 'https://hustledashboard.com,http://localhost:3000,http://52.8.4.183:3000').split(',')]
+
+# Trust proxy headers from nginx
+USE_X_FORWARDED_HOST = True
+USE_X_FORWARDED_PORT = True
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 
 REST_FRAMEWORK = {

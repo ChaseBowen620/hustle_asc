@@ -7,7 +7,7 @@ echo "🚀 Starting Hustle App Deployment..."
 export DEBUG=False
 export SECRET_KEY="your-production-secret-key-here-change-this"
 export ALLOWED_HOSTS="your-ec2-public-ip,your-domain.com,localhost"
-export CORS_ALLOWED_ORIGINS="http://your-ec2-public-ip:5173,https://your-domain.com"
+export CORS_ALLOWED_ORIGINS="http://your-ec2-public-ip:3000,https://your-domain.com"
 
 # Navigate to backend directory
 cd /home/ubuntu/hustle_asc/backend

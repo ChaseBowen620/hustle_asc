@@ -1,5 +1,6 @@
 import { useState } from "react"
 import axios from "axios"
+import { API_URL } from "@/config/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -18,7 +19,7 @@ function CreateSemester({ onSuccess }) {
   const handleSubmit = async (e) => {
     e.preventDefault()
     try {
-      await axios.post('http://localhost:8000/api/semesters/', {
+      await axios.post(`${API_URL}/api/semesters/`, {
         season,
         year: parseInt(year),
         is_current: isCurrent

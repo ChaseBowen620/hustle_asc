@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label"
 import { QrCode, Download, Copy, Check } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
-function QRCodeGenerator({ event, baseUrl = "http://52.8.4.183", isGeneral = false, organization = null }) {
+function QRCodeGenerator({ event, baseUrl = "https://hustledashboard.com", isGeneral = false, organization = null }) {
   const [isOpen, setIsOpen] = useState(false)
   const [qrCodeUrl, setQrCodeUrl] = useState("")
   const [copied, setCopied] = useState(false)

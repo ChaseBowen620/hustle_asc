@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react"
 import axios from "axios"
+import { API_URL } from "@/config/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -21,8 +22,8 @@ function CreateClass({ onSuccess }) {
     const fetchData = async () => {
       try {
         const [professorsRes, semestersRes] = await Promise.all([
-          axios.get('http://localhost:8000/api/professors/'),
-          axios.get('http://localhost:8000/api/semesters/')
+          axios.get(`${API_URL}/api/professors/`),
+          axios.get(`${API_URL}/api/semesters/`)
         ])
         setProfessors(professorsRes.data)
         setSemesters(semestersRes.data)
@@ -36,7 +37,7 @@ function CreateClass({ onSuccess }) {
   const handleSubmit = async (e) => {
     e.preventDefault()
     try {
-      await axios.post('http://localhost:8000/api/classes/', {
+      await axios.post(`${API_URL}/api/classes/`, {
         course_code: courseCode,
         professor: professorId,
         semester: semesterId

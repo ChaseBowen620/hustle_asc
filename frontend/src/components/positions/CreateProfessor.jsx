@@ -1,5 +1,6 @@
 import { useState } from "react"
 import axios from "axios"
+import { API_URL } from "@/config/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
@@ -10,7 +11,7 @@ function CreateProfessor({ onSuccess }) {
   const handleSubmit = async (e) => {
     e.preventDefault()
     try {
-      await axios.post('http://localhost:8000/api/professors/', {
+      await axios.post(`${API_URL}/api/professors/`, {
         first_name: firstName,
         last_name: lastName
       })

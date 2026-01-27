@@ -7,7 +7,7 @@ Type=exec
 User=ubuntu
 Group=ubuntu
 WorkingDirectory=/home/ubuntu/hustle_asc/frontend
-ExecStart=/usr/bin/npm run preview -- --host 0.0.0.0 --port 5173
+ExecStart=/usr/bin/npm run preview -- --host 0.0.0.0 --port 3000
 Restart=always
 RestartSec=3
 Environment=NODE_ENV=production

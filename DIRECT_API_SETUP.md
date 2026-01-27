@@ -64,13 +64,13 @@ The frontend API configuration is set to use: `http://52.8.4.183:8000`
 
 - The default in `api.js` is already set to `http://52.8.4.183:8000`
 - If using nginx proxy, you can also use `http://52.8.4.183/api/` (port 80)
-- The backend CORS is configured to allow `http://52.8.4.183` and `http://52.8.4.183:5173`
+- The backend CORS is configured to allow `http://52.8.4.183` and `http://52.8.4.183:3000`
 
 ## CORS Configuration
 
 The backend is configured to allow requests from:
 - `http://52.8.4.183` (via nginx on port 80)
-- `http://52.8.4.183:5173` (direct Vite dev server)
+- `http://52.8.4.183:3000` (direct Vite dev server)
 
 If you need to add more origins, edit `/etc/systemd/system/hustle-backend.service`:
 ```bash
