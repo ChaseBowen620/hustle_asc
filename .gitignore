@@ -30,6 +30,7 @@ env/
 
 # Django
 *.log
+log.txt
 local_settings.py
 db.sqlite3
 db.sqlite3-journal

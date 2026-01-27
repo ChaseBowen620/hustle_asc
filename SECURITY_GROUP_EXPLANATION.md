@@ -22,7 +22,6 @@
 | All traffic | Allow all outbound (recommended) | 0.0.0.0/0 | Alternative option |
 
 **Outbound 443** allows:
-- Cloudflare tunnel to connect to `api.trycloudflare.com`
 - Your server to install packages (`apt update`, `npm install`)
 - Your server to make API calls to external services
 - Certificate renewal (Let's Encrypt)
@@ -37,9 +36,8 @@ Outbound 443: Your Server → Internet (making connections)
 
 ### Example Flow:
 
-1. **Outbound 443**: Your server connects to Cloudflare → Tunnel established
-2. **Inbound 443**: Vercel frontend connects to Cloudflare tunnel → Request forwarded
-3. **Outbound 443**: Cloudflare tunnel forwards to your server (via localhost, but still needs outbound for tunnel maintenance)
+1. **Inbound 443**: Vercel frontend or users connect to your backend over HTTPS
+2. **Outbound 443**: Your server reaches out to package registries, Let's Encrypt, and other external services
 
 ## Quick Fix
 
@@ -58,7 +56,7 @@ Outbound 443: Your Server → Internet (making connections)
 ## Summary
 
 - ✅ **Inbound 443**: You have this (keep it!)
-- ❌ **Outbound 443**: You need to add this (for Cloudflare tunnel)
+- ❌ **Outbound 443**: You need to add this (for package installs, Let's Encrypt, and external APIs)
 - ✅ **Inbound 22**: You should have this (for SSH)
 - ✅ **Outbound All**: Recommended (allows server to function normally)
 

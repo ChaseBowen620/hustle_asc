@@ -75,6 +75,4 @@ if [ ! -z "$VERCEL_URL" ]; then
     echo "   curl -I -H \"Origin: $VERCEL_URL\" http://$EC2_HOST:8000/api/events/ | grep -i access-control"
 fi
 echo ""
-echo "📖 See SECURITY_SETUP.md for complete security checklist"
-echo ""
 

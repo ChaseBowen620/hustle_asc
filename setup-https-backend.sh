@@ -69,7 +69,6 @@ if [[ $DOMAIN =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     echo "   Options:"
     echo "   1. Get a domain name and point it to your IP"
     echo "   2. Use a self-signed certificate (not recommended for production)"
-    echo "   3. Use Cloudflare tunnel (alternative to Let's Encrypt)"
     echo ""
     echo "   For now, Nginx is configured but HTTPS is not set up."
     echo "   You can still use HTTP, but your frontend will show mixed content errors."
