@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import axios from "axios"
 import { format } from "date-fns"
 import { Input } from "@/components/ui/input"
@@ -10,63 +10,272 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { Search, Edit2, Check, X, Trash2, Download, Loader2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Search, ClipboardList, Edit2, Check, X, Trash2, Download } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { Label } from "@/components/ui/label"
 import { API_URL } from '@/config/api'
 import { useToast } from "@/hooks/use-toast"
+import { useAuth } from "@/hooks/useAuth"
+
+const PAGE_SIZE = 10
 
 function EventsListPage() {
   const [events, setEvents] = useState([])
+  const [organizations, setOrganizations] = useState([])
   const [searchTerm, setSearchTerm] = useState("")
-  const [selectedEvent, setSelectedEvent] = useState(null)
-  const [showAttendees, setShowAttendees] = useState(false)
   const [editingField, setEditingField] = useState(null) // { eventId: number, field: 'organization' | 'name' | 'date' }
   const [editValues, setEditValues] = useState({
     organization: "",
+    secondaryOrganizationIds: [],
     name: "",
     date: ""
   })
   const [isSaving, setIsSaving] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [downloadingCsv, setDownloadingCsv] = useState(null) // event id while downloading
+  const [nextPage, setNextPage] = useState(null) // 2, 3, ... or null when no more
+  const loadMoreRef = useRef(null)
   const { toast } = useToast()
+  const { user } = useAuth()
 
-  useEffect(() => {
-    fetchEvents()
-  }, [])
+  // Edit Organizations dialog (manage organization table)
+  const [showEditOrganizationsDialog, setShowEditOrganizationsDialog] = useState(false)
+  const [manageOrgsList, setManageOrgsList] = useState([])
+  const [newOrgName, setNewOrgName] = useState("")
+  const [isCreatingOrg, setIsCreatingOrg] = useState(false)
+  const [editingOrgId, setEditingOrgId] = useState(null)
+  const [editingOrgName, setEditingOrgName] = useState("")
 
-
-  const fetchEvents = async () => {
+  const fetchEvents = useCallback(async (reset = true) => {
+    if (reset) {
+      setLoading(true)
+      setNextPage(null)
+    }
     try {
-      const [eventsRes, attendanceRes] = await Promise.all([
-        axios.get(`${API_URL}/api/events/`),
-        axios.get(`${API_URL}/api/attendance/`)
-      ])
+      const page = reset ? 1 : nextPage
+      const url = `${API_URL}/api/events/?page=${page || 1}`
+      const eventsRes = await axios.get(url)
+      const data = eventsRes.data
+      const results = data.results ?? data
+      const newEvents = Array.isArray(results) ? results : []
 
-      // Group attendance by event
-      const eventsWithAttendance = eventsRes.data.map(event => ({
-        ...event,
-        attendees: attendanceRes.data
-          .filter(record => record.event === event.id)
-          .map(record => ({
-            ...record,
-            student: record.student,
-            checked_in_at: new Date(record.checked_in_at)
-          }))
-      }))
+      if (reset) {
+        setEvents(newEvents)
+      } else {
+        setEvents(prev => [...prev, ...newEvents])
+      }
 
-      setEvents(eventsWithAttendance)
+      const hasNext = !!data.next
+      setNextPage(hasNext && newEvents.length === PAGE_SIZE ? (page || 1) + 1 : null)
     } catch (error) {
       console.error('Error fetching events:', error)
+      toast({
+        title: "Error",
+        description: "Failed to load events.",
+        variant: "destructive"
+      })
+    } finally {
+      setLoading(false)
+      setLoadingMore(false)
     }
-  }
+  }, [nextPage, toast])
+
+  const loadMore = useCallback(async () => {
+    if (!nextPage || loadingMore || loading) return
+    setLoadingMore(true)
+    try {
+      const eventsRes = await axios.get(`${API_URL}/api/events/?page=${nextPage}`)
+      const data = eventsRes.data
+      const results = data.results ?? data
+      const newEvents = Array.isArray(results) ? results : []
+
+      setEvents(prev => [...prev, ...newEvents])
+      const hasNext = !!data.next
+      setNextPage(hasNext && newEvents.length === PAGE_SIZE ? nextPage + 1 : null)
+    } catch (error) {
+      console.error('Error fetching more events:', error)
+      toast({
+        title: "Error",
+        description: "Failed to load more events.",
+        variant: "destructive"
+      })
+    } finally {
+      setLoadingMore(false)
+    }
+  }, [nextPage, loadingMore, loading, toast])
+
+  const authHeaders = user?.token ? { headers: { Authorization: `Bearer ${user.token}` } } : {}
+
+  const fetchManageOrganizations = useCallback(async () => {
+    try {
+      const res = await axios.get(`${API_URL}/api/organizations/`, authHeaders)
+      setManageOrgsList(Array.isArray(res.data) ? res.data : [])
+    } catch (err) {
+      const status = err.response?.status
+      const msg = status === 401
+        ? 'Please log in to manage organizations.'
+        : (err.response?.data?.error || 'Failed to load organizations')
+      toast({ title: 'Error', description: msg, variant: 'destructive' })
+    }
+  }, [user?.token, toast])
+
+  const fetchEventsOrgs = useCallback(async () => {
+    try {
+      const res = await axios.get(`${API_URL}/api/events/organizations`)
+      setOrganizations(Array.isArray(res.data) ? res.data : [])
+    } catch (err) {
+      console.error('Error fetching organizations for events:', err)
+    }
+  }, [])
+
+  const handleCreateOrganization = useCallback(async () => {
+    if (!newOrgName.trim()) {
+      toast({ title: 'Error', description: 'Organization name is required', variant: 'destructive' })
+      return
+    }
+    setIsCreatingOrg(true)
+    try {
+      await axios.post(`${API_URL}/api/organizations/`, { name: newOrgName.trim() }, authHeaders)
+      toast({ title: 'Success', description: 'Organization created successfully' })
+      setNewOrgName('')
+      await fetchManageOrganizations()
+      await fetchEventsOrgs()
+    } catch (err) {
+      const msg = err.response?.data?.error || 'Failed to create organization'
+      toast({ title: 'Error', description: msg, variant: 'destructive' })
+    } finally {
+      setIsCreatingOrg(false)
+    }
+  }, [newOrgName, authHeaders, fetchManageOrganizations, fetchEventsOrgs, toast])
+
+  const handleUpdateOrganization = useCallback(async (orgId, name) => {
+    if (!name?.trim()) {
+      toast({ title: 'Error', description: 'Organization name is required', variant: 'destructive' })
+      return
+    }
+    try {
+      await axios.patch(`${API_URL}/api/organizations/${orgId}/`, { name: name.trim() }, authHeaders)
+      toast({ title: 'Success', description: 'Organization updated successfully' })
+      setEditingOrgId(null)
+      setEditingOrgName('')
+      await fetchManageOrganizations()
+      await fetchEventsOrgs()
+    } catch (err) {
+      const msg = err.response?.data?.error || 'Failed to update organization'
+      toast({ title: 'Error', description: msg, variant: 'destructive' })
+    }
+  }, [authHeaders, fetchManageOrganizations, fetchEventsOrgs, toast])
+
+  const handleDeleteOrganization = useCallback(async (orgId) => {
+    if (!window.confirm('Are you sure you want to delete this organization?')) return
+    try {
+      await axios.delete(`${API_URL}/api/organizations/${orgId}/`, authHeaders)
+      toast({ title: 'Success', description: 'Organization deleted successfully' })
+      await fetchManageOrganizations()
+      await fetchEventsOrgs()
+    } catch (err) {
+      const msg = err.response?.data?.error || 'Failed to delete organization'
+      toast({ title: 'Error', description: msg, variant: 'destructive' })
+    }
+  }, [authHeaders, fetchManageOrganizations, fetchEventsOrgs, toast])
+
+  useEffect(() => {
+    fetchEvents(true)
+  }, [])
+
+  useEffect(() => {
+    if (showEditOrganizationsDialog) fetchManageOrganizations()
+  }, [showEditOrganizationsDialog, fetchManageOrganizations])
+
+  useEffect(() => {
+    const fetchOrgs = async () => {
+      try {
+        const res = await axios.get(`${API_URL}/api/events/organizations`)
+        setOrganizations(Array.isArray(res.data) ? res.data : [])
+      } catch (err) {
+        console.error('Error fetching organizations:', err)
+      }
+    }
+    fetchOrgs()
+  }, [])
+
+  // Infinite scroll: load more when sentinel is visible
+  useEffect(() => {
+    const el = loadMoreRef.current
+    if (!el || !nextPage || loadingMore) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) loadMore()
+      },
+      { rootMargin: '100px', threshold: 0.1 }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [nextPage, loadingMore, loadMore])
 
 
+
+  // Direct CSV download from backend (no list loaded on frontend)
+  const handleDownloadAttendanceCSV = useCallback(async (event) => {
+    const count = event.attendance_count ?? 0
+    if (!event?.id || count === 0) {
+      toast({
+        title: "No attendees",
+        description: "There are no attendees to download for this event.",
+        variant: "destructive"
+      })
+      return
+    }
+    setDownloadingCsv(event.id)
+    try {
+      const res = await axios.get(`${API_URL}/api/events/${event.id}/attendance/export/`, {
+        responseType: 'blob',
+        withCredentials: true
+      })
+      const blob = res.data
+      const disposition = res.headers['content-disposition']
+      let filename = `${event.name}_Attendance_${format(new Date(event.date), 'M-d-yy')}.csv`.replace(/[/\\?%*:|"<>]/g, '-')
+      if (disposition && disposition.includes('filename=')) {
+        const match = disposition.match(/filename="?([^";\n]+)"?/)
+        if (match) filename = match[1].trim()
+      }
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+      toast({ title: "Download started", description: "Attendance CSV is downloading." })
+    } catch (err) {
+      console.error('Error downloading CSV:', err)
+      toast({
+        title: "Error",
+        description: "Failed to download attendance CSV.",
+        variant: "destructive"
+      })
+    } finally {
+      setDownloadingCsv(null)
+    }
+  }, [toast])
 
   const handleEditClick = (event, field) => {
     setEditingField({ eventId: event.id, field })
@@ -86,9 +295,11 @@ function EventsListPage() {
         date: dateString
       })
     } else if (field === 'organization') {
+      const secondaryIds = (event.event_organizations || []).map(eo => eo.organization_id ?? eo.organization?.id).filter(Boolean)
       setEditValues({
         ...editValues,
-        organization: event.organization
+        organization: event.organization || "",
+        secondaryOrganizationIds: secondaryIds
       })
     } else if (field === 'name') {
       setEditValues({
@@ -102,6 +313,7 @@ function EventsListPage() {
     setEditingField(null)
     setEditValues({
       organization: "",
+      secondaryOrganizationIds: [],
       name: "",
       date: ""
     })
@@ -115,7 +327,7 @@ function EventsListPage() {
     if (field === 'organization' && !editValues.organization.trim()) {
       toast({
         title: "Error",
-        description: "Event type cannot be empty",
+        description: "Primary organization is required",
         variant: "destructive"
       })
       return
@@ -146,6 +358,7 @@ function EventsListPage() {
       
       if (field === 'organization') {
         updatePayload.organization = editValues.organization.trim()
+        updatePayload.organizations = editValues.secondaryOrganizationIds ?? []
       } else if (field === 'name') {
         updatePayload.name = editValues.name.trim()
       } else if (field === 'date') {
@@ -158,22 +371,16 @@ function EventsListPage() {
         updatePayload.date = isoDate
       }
 
-      // Update the event via API
-      await axios.patch(`${API_URL}/api/events/${eventId}/`, updatePayload)
+      const res = await axios.patch(`${API_URL}/api/events/${eventId}/`, updatePayload)
+      const updated = res.data
 
-      // Update local state
-      setEvents(events.map(e => 
-        e.id === eventId 
-          ? { 
-              ...e, 
-              ...updatePayload
-            }
-          : e
-      ))
+      // Update local state (use server response so event_organizations is correct)
+      setEvents(events.map(e => (e.id === eventId ? { ...e, ...updated } : e)))
 
       setEditingField(null)
       setEditValues({
         organization: "",
+        secondaryOrganizationIds: [],
         name: "",
         date: ""
       })
@@ -194,49 +401,6 @@ function EventsListPage() {
     }
   }
 
-  const handleDownloadCSV = (event) => {
-    if (!event || !event.attendees || event.attendees.length === 0) {
-      toast({
-        title: "Error",
-        description: "No attendees to download",
-        variant: "destructive"
-      })
-      return
-    }
-
-    // Create CSV content
-    const csvContent = [
-      `${event.name},${format(new Date(event.date), 'M/d/yy')}`,
-      'First Name,Last Name,A-Number',
-      ...event.attendees
-        .sort((a, b) => 
-          `${a.student.last_name} ${a.student.first_name}`
-            .localeCompare(`${b.student.last_name} ${b.student.first_name}`)
-        )
-        .map(record => {
-          // Get A-number from username (which is typically the A-number)
-          const aNumber = record.student.username || record.student.user?.username || 'N/A'
-          return `${record.student.first_name},${record.student.last_name},${aNumber}`
-        })
-    ].join('\n')
-
-    // Create filename
-    const eventDate = format(new Date(event.date), 'M/d/yy')
-    const filename = `${event.name}_Attendance_${eventDate}.csv`
-      .replace(/[/\\?%*:|"<>]/g, '-')
-
-    // Create and trigger download
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const link = document.createElement('a')
-    const url = URL.createObjectURL(blob)
-    link.setAttribute('href', url)
-    link.setAttribute('download', filename)
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
-  }
-
   const handleDeleteEvent = async (eventId) => {
     if (!window.confirm('Are you sure you want to delete this event? This action cannot be undone.')) {
       return
@@ -249,17 +413,12 @@ function EventsListPage() {
       // Remove event from local state
       setEvents(events.filter(e => e.id !== eventId))
 
-      // If we were viewing attendees for this event, close the dialog
-      if (selectedEvent?.id === eventId) {
-        setShowAttendees(false)
-        setSelectedEvent(null)
-      }
-
       // Exit edit mode if we were editing this event
       if (editingField?.eventId === eventId) {
         setEditingField(null)
         setEditValues({
           organization: "",
+          secondaryOrganizationIds: [],
           name: "",
           date: ""
         })
@@ -298,7 +457,7 @@ function EventsListPage() {
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>Event Type</TableHead>
+          <TableHead>Organization(s)</TableHead>
           <TableHead>Name</TableHead>
           <TableHead>Date</TableHead>
           {showAttendance && <TableHead>Attendance</TableHead>}
@@ -315,58 +474,23 @@ function EventsListPage() {
           <TableRow key={event.id}>
             <TableCell className="font-medium">
               <div className="flex items-center gap-2">
-                {isEditingOrg ? (
-                  <Input
-                    value={editValues.organization}
-                    onChange={(e) => setEditValues({ ...editValues, organization: e.target.value })}
-                    className="w-32"
-                    disabled={isSaving}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        handleSaveEdit(event.id, 'organization')
-                      } else if (e.key === 'Escape') {
-                        handleCancelEdit()
-                      }
-                    }}
-                    autoFocus
-                  />
-                ) : (
-                  <span>{event.organization}</span>
-                )}
-                {isEditingOrg ? (
-                  <div className="flex items-center gap-1">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => handleSaveEdit(event.id, 'organization')}
-                      disabled={isSaving}
-                      className="h-6 w-6 p-0"
-                      title="Save"
-                    >
-                      <Check className="h-3 w-3 text-green-600" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={handleCancelEdit}
-                      disabled={isSaving}
-                      className="h-6 w-6 p-0"
-                      title="Cancel"
-                    >
-                      <X className="h-3 w-3 text-red-600" />
-                    </Button>
-                  </div>
-                ) : (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handleEditClick(event, 'organization')}
-                    className="h-6 w-6 p-0"
-                    title="Edit Event Type"
-                  >
-                    <Edit2 className="h-3 w-3" />
-                  </Button>
-                )}
+                <span>
+                  {event.organization}
+                  {(event.event_organizations?.length ?? 0) > 0 && (
+                    <span className="text-muted-foreground">
+                      {" "}({(event.event_organizations || []).map(eo => eo.organization_name ?? eo.organization?.name).filter(Boolean).join(", ")})
+                    </span>
+                  )}
+                </span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => handleEditClick(event, 'organization')}
+                  className="h-6 w-6 p-0"
+                  title="Edit Organization(s)"
+                >
+                  <Edit2 className="h-3 w-3" />
+                </Button>
               </div>
             </TableCell>
             <TableCell>
@@ -499,19 +623,21 @@ function EventsListPage() {
             {showAttendance && (
               <TableCell>
                 <button
-                  className={`${event.attendees?.length > 0 
+                  className={`${(event.attendance_count ?? 0) > 0 
                     ? "bg-slate-50 hover:bg-slate-300 transition-colors px-3 py-1 rounded border"
                     : "bg-slate-100 text-slate-400 cursor-not-allowed px-3 py-1 rounded border"
                   }`}
-                  onClick={() => {
-                    if (event.attendees?.length > 0) {
-                      setSelectedEvent(event)
-                      setShowAttendees(true)
-                    }
-                  }}
-                  disabled={!event.attendees?.length}
+                  onClick={() => handleDownloadAttendanceCSV(event)}
+                  disabled={(event.attendance_count ?? 0) === 0 || downloadingCsv === event.id}
+                  title="Download attendance CSV"
                 >
-                  {event.attendees?.length || 0} <ClipboardList className="h-4 w-4 inline ml-1" />
+                  {downloadingCsv === event.id ? (
+                    <Loader2 className="h-4 w-4 animate-spin inline" />
+                  ) : (
+                    <>
+                      {event.attendance_count ?? 0} <Download className="h-4 w-4 inline ml-1" />
+                    </>
+                  )}
                 </button>
               </TableCell>
             )}
@@ -533,87 +659,213 @@ function EventsListPage() {
     </Table>
   )
 
+  const orgDialogEventId = editingField?.field === 'organization' ? editingField.eventId : null
+
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Events</h1>
-      </div>
-
-      <div className="flex items-center space-x-2">
-        <Search className="w-5 h-5 text-gray-500" />
-        <Input
-          placeholder="Search by name or organization..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="max-w-sm"
-        />
-      </div>
-
-          <div className="border rounded-lg">
-            <EventsTable events={filteredEvents} showAttendance={true} />
-          </div>
-
-      {/* Attendance Dialog */}
-      <Dialog open={showAttendees} onOpenChange={setShowAttendees}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <Dialog
+        open={editingField?.field === 'organization'}
+        onOpenChange={(open) => { if (!open) handleCancelEdit() }}
+      >
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>
-              {selectedEvent?.name} - Attendance Details
-            </DialogTitle>
+            <DialogTitle>Edit organizations</DialogTitle>
             <DialogDescription>
-              View attendance for this event.
+              Choose the primary organization and any secondary organizations for this event.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-6">
-            {/* Current Attendees Table */}
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="primary-org">Primary organization</Label>
+              <Select
+                value={editValues.organization || ""}
+                onValueChange={(v) => setEditValues({ ...editValues, organization: v })}
+                disabled={isSaving}
+              >
+                <SelectTrigger id="primary-org" className="w-full">
+                  <SelectValue placeholder="Select primary organization" />
+                </SelectTrigger>
+                <SelectContent>
+                  {organizations.map((org) => (
+                    <SelectItem key={org.id} value={org.name}>{org.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label>Secondary organizations</Label>
+              <div className="border rounded-md p-3 max-h-48 overflow-y-auto space-y-2">
+                {organizations
+                  .filter((o) => o.name !== editValues.organization)
+                  .map((org) => (
+                    <label key={org.id} className="flex items-center gap-2 cursor-pointer hover:bg-muted/50 rounded px-2 py-1 -mx-2 -my-1">
+                      <Checkbox
+                        checked={(editValues.secondaryOrganizationIds || []).includes(org.id)}
+                        onCheckedChange={(checked) => {
+                          const ids = editValues.secondaryOrganizationIds || []
+                          setEditValues({
+                            ...editValues,
+                            secondaryOrganizationIds: checked
+                              ? [...ids, org.id]
+                              : ids.filter((id) => id !== org.id)
+                          })
+                        }}
+                      />
+                      <span className="text-sm">{org.name}</span>
+                    </label>
+                  ))}
+                {organizations.filter((o) => o.name !== editValues.organization).length === 0 && (
+                  <p className="text-sm text-muted-foreground">No other organizations to select.</p>
+                )}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={handleCancelEdit} disabled={isSaving}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => orgDialogEventId && handleSaveEdit(orgDialogEventId, 'organization')}
+              disabled={isSaving || !editValues.organization?.trim()}
+            >
+              {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Organizations dialog – change names, add, delete organizations */}
+      <Dialog open={showEditOrganizationsDialog} onOpenChange={setShowEditOrganizationsDialog}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Organizations</DialogTitle>
+            <DialogDescription>
+              Change the name of each organization, add new ones, or delete organizations from the table.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-6 py-2">
             <div>
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-semibold">Checked In Students ({selectedEvent?.attendees?.length || 0})</h3>
-                <Button
-                  variant="outline"
-                  onClick={() => handleDownloadCSV(selectedEvent)}
-                  disabled={!selectedEvent?.attendees || selectedEvent.attendees.length === 0}
-                  className="gap-2"
-                >
-                  <Download className="h-4 w-4" />
-                  Download CSV
+              <h3 className="text-sm font-semibold mb-3">Current organizations</h3>
+              {manageOrgsList.length === 0 ? (
+                <p className="text-muted-foreground text-sm">No organizations yet.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead className="w-[180px]">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {manageOrgsList.map((org) => (
+                      <TableRow key={org.id}>
+                        <TableCell>
+                          {editingOrgId === org.id ? (
+                            <div className="flex items-center gap-2">
+                              <Input
+                                value={editingOrgName}
+                                onChange={(e) => setEditingOrgName(e.target.value)}
+                                className="max-w-xs"
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') handleUpdateOrganization(org.id, editingOrgName)
+                                  if (e.key === 'Escape') { setEditingOrgId(null); setEditingOrgName('') }
+                                }}
+                                autoFocus
+                              />
+                              <Button size="sm" onClick={() => handleUpdateOrganization(org.id, editingOrgName)} disabled={!editingOrgName?.trim()}>
+                                Save
+                              </Button>
+                              <Button size="sm" variant="ghost" onClick={() => { setEditingOrgId(null); setEditingOrgName('') }}>
+                                Cancel
+                              </Button>
+                            </div>
+                          ) : (
+                            <span>{org.name}</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {editingOrgId === org.id ? null : (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="mr-1"
+                                onClick={() => { setEditingOrgId(org.id); setEditingOrgName(org.name || '') }}
+                              >
+                                <Edit2 className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => handleDeleteOrganization(org.id)}
+                              >
+                                Delete
+                              </Button>
+                            </>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </div>
+            <div className="border-t pt-4">
+              <h3 className="text-sm font-semibold mb-3">Add organization</h3>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Organization name"
+                  value={newOrgName}
+                  onChange={(e) => setNewOrgName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleCreateOrganization()}
+                  className="max-w-xs"
+                />
+                <Button onClick={handleCreateOrganization} disabled={isCreatingOrg}>
+                  {isCreatingOrg ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Add'}
                 </Button>
               </div>
-              {selectedEvent?.attendees && selectedEvent.attendees.length > 0 ? (
-                <div className="border rounded-lg">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Name</TableHead>
-                        <TableHead>Check-in Time</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {selectedEvent.attendees
-                        .sort((a, b) => 
-                          `${a.student.last_name} ${a.student.first_name}`
-                            .localeCompare(`${b.student.last_name} ${b.student.first_name}`)
-                        )
-                        .map((record) => (
-                          <TableRow key={record.id}>
-                            <TableCell>
-                              {record.student.first_name} {record.student.last_name}
-                            </TableCell>
-                            <TableCell>
-                              {format(record.checked_in_at, 'h:mm a')}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              ) : (
-                <p className="text-gray-500">No students checked in yet</p>
-              )}
             </div>
           </div>
         </DialogContent>
       </Dialog>
+
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold">Events</h1>
+      </div>
+
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center space-x-2">
+          <Search className="w-5 h-5 text-gray-500" />
+          <Input
+            placeholder="Search by name or organization..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="max-w-sm"
+          />
+        </div>
+        <Button onClick={() => setShowEditOrganizationsDialog(true)}>
+          Edit Organizations
+        </Button>
+      </div>
+
+          <div className="border rounded-lg">
+            {loading ? (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 className="h-10 w-10 animate-spin text-slate-400" />
+                <span className="ml-3 text-slate-500">Loading events...</span>
+              </div>
+            ) : (
+              <>
+                <EventsTable events={filteredEvents} showAttendance={true} />
+                <div ref={loadMoreRef} className="min-h-[40px] flex items-center justify-center py-4">
+                  {loadingMore && (
+                    <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+
     </div>
   )
 }

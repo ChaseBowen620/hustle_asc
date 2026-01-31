@@ -37,7 +37,7 @@ function App() {
               path="/" 
               element={
                 user ? (
-                  <Navigate to={userIsAdmin ? "/admin/dashboard" : "/dashboard"} replace />
+                  <Navigate to="/dashboard" replace />
                 ) : (
                   <Navigate to="/login" replace />
                 )
@@ -49,12 +49,12 @@ function App() {
             <Route path="/check-in" element={<GeneralCheckInPage />} />
             <Route path="/check-in/public/:eventId" element={<PublicCheckInPage />} />
 
-            {/* Student route */}
+            {/* Dashboard - shows Admin or Student view based on role */}
             <Route
               path="/dashboard"
               element={
                 <PrivateRoute>
-                  <StudentDashboard />
+                  {userIsAdmin ? <AdminDashboardPage /> : <StudentDashboard />}
                 </PrivateRoute>
               }
             />
@@ -69,10 +69,9 @@ function App() {
               }
             />
 
-            {/* Admin routes */}
+            {/* Admin-only routes */}
             {userIsAdmin && (
               <>
-                <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
                 <Route path="/events" element={<EventsListPage />} />
                 <Route path="/check-in" element={<CheckInPage />} />
                 <Route path="/check-in/:eventId" element={<CheckInPage />} />

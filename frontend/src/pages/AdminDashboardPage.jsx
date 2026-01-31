@@ -74,14 +74,15 @@ function AdminDashboardPage() {
       const [studentData, attendanceData, eventData, totalStudentsRes, participatingStudentsRes, studentPointsRes] = await Promise.all([
         axios.get(`${API_URL}/api/students`),
         axios.get(`${API_URL}/api/attendance`),
-        axios.get(`${API_URL}/api/events`),
+        axios.get(`${API_URL}/api/events/?page_size=1000`),
         axios.get(totalStudentsUrl),
         axios.get(participatingStudentsUrl),
         axios.get(studentPointsUrl)
       ])
       
-      // Create event date map
-      const eventDateMap = eventData.data.reduce((acc, event) => {
+      // Create event date map (handle paginated response)
+      const eventsList = eventData.data.results ?? eventData.data
+      const eventDateMap = (Array.isArray(eventsList) ? eventsList : []).reduce((acc, event) => {
         acc[event.id] = new Date(event.date)
         return acc
       }, {})
@@ -159,8 +160,8 @@ function AdminDashboardPage() {
       const allAttendances = attendanceResponse.data
       
       // Fetch all events to get organization info and dates
-      const eventsResponse = await axios.get(`${API_URL}/api/events`)
-      const events = eventsResponse.data
+      const eventsResponse = await axios.get(`${API_URL}/api/events/?page_size=1000`)
+      const events = eventsResponse.data.results ?? eventsResponse.data ?? []
       
       // Create a map of event ID to organization and date
       const eventMap = {}
@@ -260,13 +261,9 @@ function AdminDashboardPage() {
 
   const fetchOrganizations = async () => {
     try {
-      const response = await axios.get(`${API_URL}/api/events`)
-      // Get unique organizations from the organization column of events
-      const uniqueOrgs = [...new Set(response.data.map(event => event.organization).filter(org => org))]
-      // Sort alphabetically
-      uniqueOrgs.sort()
-      // Convert to array of objects with name property for consistency
-      setOrganizations(uniqueOrgs.map(org => ({ name: org })))
+      const response = await axios.get(`${API_URL}/api/events/organizations`)
+      const list = Array.isArray(response.data) ? response.data : []
+      setOrganizations(list.map(org => ({ id: org.id, name: org.name })))
     } catch (error) {
       console.error('Error fetching organizations:', error)
     }
@@ -276,13 +273,14 @@ function AdminDashboardPage() {
     try {
       const [attendanceResponse, eventsResponse] = await Promise.all([
         axios.get(`${API_URL}/api/attendance`),
-        axios.get(`${API_URL}/api/events`)
+        axios.get(`${API_URL}/api/events/?page_size=1000`)
       ])
-      
+      const eventsList = eventsResponse.data.results ?? eventsResponse.data
+      const allEvents = Array.isArray(eventsList) ? eventsList : []
       // Filter events by organization if selected
-      let filteredEvents = eventsResponse.data
+      let filteredEvents = allEvents
       if (selectedOrganization) {
-        filteredEvents = eventsResponse.data.filter(event => 
+        filteredEvents = allEvents.filter(event => 
           event.organization === selectedOrganization ||
           (event.event_organizations && event.event_organizations.some(eo => 
             (eo.organization_name || eo.organization) === selectedOrganization
@@ -543,7 +541,7 @@ function AdminDashboardPage() {
         <TabsContent value="students" className="space-y-4">
           <div className="flex justify-between items-center">
             <div className="flex items-center space-x-2">
-              <label className="text-sm font-medium">Filter by Event Type:</label>
+              <label className="text-sm font-medium">Filter by Organization:</label>
               <Select
                 value={selectedOrganization || "all"}
                 onValueChange={(value) => {
@@ -552,13 +550,13 @@ function AdminDashboardPage() {
                 }}
               >
                 <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="All Event Types" />
+                  <SelectValue placeholder="All Organizations" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Event Types</SelectItem>
-                  {organizations.map((org, index) => (
-                    <SelectItem 
-                      key={`org-${index}`} 
+                  <SelectItem value="all">All Organizations</SelectItem>
+                  {organizations.map((org) => (
+                    <SelectItem
+                      key={org.id ?? org.name}
                       value={org.name || org}
                     >
                       {org.name || org}

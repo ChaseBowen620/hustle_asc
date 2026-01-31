@@ -8,7 +8,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework import status
 from django.contrib.auth.models import User
-from .models import Student, Event, Attendance, Semester
+from .models import Student, Event, Attendance, Semester, Organization, EventOrganization
 from datetime import datetime
 import re
 
@@ -168,16 +168,26 @@ def process_onetap_checkin(participant_data, profile_data, list_data):
         event_date_str = list_data.get('date', '')
         event_description = list_data.get('description', '')
         
-        # Parse event name: format is "Organization - Event Name"
-        # Split on " - " (space hyphen space) to separate organization and event name
-        if ' - ' in raw_event_name:
-            parts = raw_event_name.split(' - ', 1)  # Split only on first occurrence
-            organization = parts[0].strip()
-            event_name = parts[1].strip() if len(parts) > 1 else raw_event_name
+        # Load organizations sorted by name length descending (longer names match first)
+        org_list = list(Organization.objects.all().order_by('-name'))
+        org_list.sort(key=lambda o: len(o.name), reverse=True)
+        
+        # Parse event name by containment: match org names contained in raw_event_name
+        raw_lower = raw_event_name.lower()
+        matched_names = []
+        for org in org_list:
+            if org.name.lower() in raw_lower:
+                matched_names.append(org.name)
+        
+        if matched_names:
+            primary_org_name = matched_names[0]
+            secondary_org_names = [n for n in matched_names[1:] if n != primary_org_name]
         else:
-            # If no " - " found, use the full name as event name and default organization
-            organization = None  # Will be set to default in create_or_find_event
-            event_name = raw_event_name
+            Organization.objects.get_or_create(name='Other')
+            primary_org_name = 'Other'
+            secondary_org_names = []
+        
+        event_name = raw_event_name
         
         # Parse event date
         try:
@@ -207,7 +217,9 @@ def process_onetap_checkin(participant_data, profile_data, list_data):
         
         # Step 2: Create or find event
         event = create_or_find_event(
-            event_name, event_date, event_description, organization
+            event_name, event_date, event_description,
+            primary_org_name=primary_org_name,
+            secondary_org_names=secondary_org_names
         )
         
         # Step 3: Create attendance record
@@ -374,8 +386,13 @@ def create_or_find_student(first_name, last_name, email, a_number, phone):
     logger.info(f"Created new student: {student.first_name} {student.last_name} ({email})")
     return student
 
-def create_or_find_event(event_name, event_date, event_description, organization=None):
-    """Create or find an event based on OneTap list data."""
+def create_or_find_event(event_name, event_date, event_description, primary_org_name=None, secondary_org_names=None):
+    """Create or find an event based on OneTap list data. primary_org_name and secondary_org_names are organization names."""
+    if not primary_org_name:
+        Organization.objects.get_or_create(name='Other')
+        primary_org_name = 'Other'
+    if secondary_org_names is None:
+        secondary_org_names = []
     
     # Try to find existing event by name and date
     try:
@@ -384,29 +401,28 @@ def create_or_find_event(event_name, event_date, event_description, organization
             date__date=event_date.date()
         )
         logger.info(f"Found existing event: {event.name} on {event.date}")
-        # Update organization if provided and different
-        if organization and event.organization != organization:
-            event.organization = organization
-            event.event_type = organization  # Map event type to organization as well
+        if event.organization != primary_org_name:
+            event.organization = primary_org_name
+            event.event_type = primary_org_name
             event.save()
-            logger.info(f"Updated event organization to: {organization}")
+            logger.info(f"Updated event organization to: {primary_org_name}")
+        # Replace secondaries
+        EventOrganization.objects.filter(event=event).delete()
+        for name in secondary_org_names:
+            if name == primary_org_name:
+                continue
+            try:
+                org = Organization.objects.get(name=name)
+                EventOrganization.objects.get_or_create(event=event, organization=org)
+            except Organization.DoesNotExist:
+                logger.warning(f"Organization name '{name}' not found, skipping secondary")
         return event
     except Event.DoesNotExist:
         pass
     
-    # Create new event
-    
-    # Use provided organization or default to 'ASC'
-    if not organization:
-        organization = 'ASC'  # Default organization
-    
-    # Map event type to organization (as per user request)
-    event_type = organization
-    
     logger.info(f"Processing event name: '{event_name}'")
-    logger.info(f"Organization: {organization}, event_type: {event_type}")
+    logger.info(f"Primary organization: {primary_org_name}, secondaries: {secondary_org_names}")
     
-    # Get current semester (or create a default one)
     current_semester = Semester.objects.filter(is_current=True).first()
     if not current_semester:
         current_semester = Semester.objects.create(
@@ -416,15 +432,23 @@ def create_or_find_event(event_name, event_date, event_description, organization
             is_current=True
         )
     
-    # Create event
     event = Event.objects.create(
         name=event_name,
         date=event_date,
-        organization=organization,
-        event_type=event_type,
+        organization=primary_org_name,
+        event_type=primary_org_name,
         description=event_description,
-        location='ASC Space'  # Default location
+        location='ASC Space'
     )
+    
+    for name in secondary_org_names:
+        if name == primary_org_name:
+            continue
+        try:
+            org = Organization.objects.get(name=name)
+            EventOrganization.objects.get_or_create(event=event, organization=org)
+        except Organization.DoesNotExist:
+            logger.warning(f"Organization name '{name}' not found, skipping secondary")
     
     logger.info(f"Created new event: {event.name} on {event.date}")
     return event

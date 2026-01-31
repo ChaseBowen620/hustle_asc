@@ -29,7 +29,7 @@ function Navbar() {
               alt="Logo"
               className="h-12 w-12 brightness-0 invert"
             />
-            <Link to="/admin/dashboard" className={linkClass("/admin/dashboard")}>
+            <Link to="/dashboard" className={linkClass("/dashboard")}>
               Dashboard
             </Link>
               <Link to="/events" className={linkClass("/events")}>

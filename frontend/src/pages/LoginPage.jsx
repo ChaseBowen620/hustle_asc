@@ -18,7 +18,7 @@ function LoginPage() {
     
     try {
       await login(username, password)
-      navigate('/admin/dashboard')
+      navigate('/dashboard')
     } catch (error) {
       setError("Invalid credentials")
       console.error('Login error:', error)

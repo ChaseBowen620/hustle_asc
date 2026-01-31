@@ -27,7 +27,17 @@ class EventOrganizationSerializer(serializers.ModelSerializer):
 
 class EventSerializer(serializers.ModelSerializer):
     has_passed = serializers.BooleanField(read_only=True)
+    attendance_count = serializers.SerializerMethodField()
     event_organizations = EventOrganizationSerializer(many=True, read_only=True)
+
+    def get_attendance_count(self, obj):
+        # Prefer annotated value from list queryset; fallback to relation count (reliable with pagination)
+        val = getattr(obj, 'attendance_count', None)
+        if isinstance(val, int):
+            return val
+        if hasattr(obj, 'attendances'):
+            return obj.attendances.count()
+        return 0
     organizations = serializers.ListField(
         child=serializers.IntegerField(),
         write_only=True,
@@ -40,22 +50,22 @@ class EventSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'organization', 'event_type', 'description', 'date', 'location', 'has_passed',
             'is_recurring', 'recurrence_type', 'recurrence_end_date', 'parent_event',
-            'event_organizations', 'organizations'
+            'event_organizations', 'organizations', 'attendance_count'
         ]
     
     def validate_organization(self, value):
-        """Validate organization field - allow any string value"""
-        if not value:
-            return value
-        
-        # Allow any non-empty string value for organization
-        # This allows flexibility for editing and webhook-created events
-        if not isinstance(value, str) or len(value.strip()) == 0:
+        """Validate organization field - must be an existing Organization name."""
+        from .models import Organization
+        if not value or (isinstance(value, str) and len(value.strip()) == 0):
+            return value or ''
+        if not isinstance(value, str):
+            raise serializers.ValidationError("Organization must be a string.")
+        name = value.strip()
+        if not Organization.objects.filter(name=name).exists():
             raise serializers.ValidationError(
-                "Organization must be a non-empty string."
+                f"Organization '{name}' does not exist. Please select from existing organizations."
             )
-        
-        return value.strip()
+        return name
     
     def validate_organizations(self, value):
         """Validate that all organization IDs exist in the Organization table"""

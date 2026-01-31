@@ -57,8 +57,9 @@ function CheckInPage() {
 
   const fetchEvents = async () => {
     try {
-      const response = await axios.get(`${API_URL}/api/events/`)
-      setEvents(response.data)
+      const response = await axios.get(`${API_URL}/api/events/?page_size=500`)
+      const data = response.data
+      setEvents(data.results ?? data ?? [])
     } catch (error) {
       console.error('Error fetching events:', error)
     }

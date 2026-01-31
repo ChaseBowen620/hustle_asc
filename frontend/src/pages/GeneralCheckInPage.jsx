@@ -53,8 +53,9 @@ function GeneralCheckInPage() {
   const fetchEvents = async () => {
     try {
       setIsLoading(true)
-      const response = await axios.get(`${API_URL}/api/events/`)
-      let allEvents = response.data
+      const response = await axios.get(`${API_URL}/api/events/?page_size=500`)
+      const data = response.data
+      let allEvents = data.results ?? data ?? []
       
       // If organization is specified, filter events by that organization
       if (organization) {
