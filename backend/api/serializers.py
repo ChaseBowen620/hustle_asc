@@ -29,6 +29,9 @@ class EventSerializer(serializers.ModelSerializer):
     has_passed = serializers.BooleanField(read_only=True)
     attendance_count = serializers.SerializerMethodField()
     event_organizations = EventOrganizationSerializer(many=True, read_only=True)
+    event_type = serializers.CharField(required=False, allow_blank=True, default='')
+    description = serializers.CharField(required=False, allow_blank=True, default='')
+    location = serializers.CharField(required=False, allow_blank=True, default='')
 
     def get_attendance_count(self, obj):
         # Prefer annotated value from list queryset; fallback to relation count (reliable with pagination)

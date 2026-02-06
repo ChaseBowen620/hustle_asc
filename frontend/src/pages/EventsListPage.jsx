@@ -11,6 +11,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Search, Edit2, Check, X, Trash2, Download, Loader2 } from "lucide-react"
+import { useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import {
   Select,
@@ -54,6 +55,7 @@ function EventsListPage() {
   const loadMoreRef = useRef(null)
   const { toast } = useToast()
   const { user } = useAuth()
+  const navigate = useNavigate()
 
   // Edit Organizations dialog (manage organization table)
   const [showEditOrganizationsDialog, setShowEditOrganizationsDialog] = useState(false)
@@ -642,16 +644,28 @@ function EventsListPage() {
               </TableCell>
             )}
             <TableCell>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => handleDeleteEvent(event.id)}
-                disabled={isSaving || isEditingOrg || isEditingName || isEditingDate}
-                className="h-8 w-8 p-0"
-                title="Delete Event"
-              >
-                <Trash2 className="h-4 w-4 text-red-600" />
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => navigate(`/events/${event.id}/edit`)}
+                  disabled={isSaving || isEditingOrg || isEditingName || isEditingDate}
+                  className="h-8 w-8 p-0"
+                  title="Edit event / View who checked in"
+                >
+                  <Edit2 className="h-4 w-4 text-slate-600" />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => handleDeleteEvent(event.id)}
+                  disabled={isSaving || isEditingOrg || isEditingName || isEditingDate}
+                  className="h-8 w-8 p-0"
+                  title="Delete Event"
+                >
+                  <Trash2 className="h-4 w-4 text-red-600" />
+                </Button>
+              </div>
             </TableCell>
           </TableRow>
         )})}
@@ -840,7 +854,7 @@ function EventsListPage() {
             placeholder="Search by name or organization..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="max-w-sm"
+            className="min-w-[280px] max-w-md"
           />
         </div>
         <Button onClick={() => setShowEditOrganizationsDialog(true)}>

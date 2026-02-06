@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label"
 import { QrCode, Download, Copy, Check } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
-function QRCodeGenerator({ event, baseUrl = "https://hustledashboard.com", isGeneral = false, organization = null }) {
+function QRCodeGenerator({ event, baseUrl = "https://hustledashboard.com", isGeneral = false, organization = null, scanPath = "/scan" }) {
   const [isOpen, setIsOpen] = useState(false)
   const [qrCodeUrl, setQrCodeUrl] = useState("")
   const [copied, setCopied] = useState(false)
@@ -21,27 +21,26 @@ function QRCodeGenerator({ event, baseUrl = "https://hustledashboard.com", isGen
   useEffect(() => {
     if (isOpen) {
       if (organization) {
-        // Organization-specific check-in URL
-        const orgSlug = organization.toLowerCase().replace(/\s+/g, '') // Convert to lowercase and remove spaces
-        const orgCheckInUrl = `${baseUrl}/check-in/${orgSlug}`
+        const orgSlug = organization.toLowerCase().replace(/\s+/g, '')
+        const orgCheckInUrl = `${baseUrl}${scanPath}/${orgSlug}`
         setQrCodeUrl(orgCheckInUrl)
       } else if (isGeneral) {
-        const generalCheckInUrl = `${baseUrl}/check-in`
+        const generalCheckInUrl = `${baseUrl}${scanPath}`
         setQrCodeUrl(generalCheckInUrl)
       } else if (event) {
         const publicCheckInUrl = `${baseUrl}/check-in/public/${event.id}`
         setQrCodeUrl(publicCheckInUrl)
       }
     }
-  }, [event, isOpen, baseUrl, isGeneral, organization])
+  }, [event, isOpen, baseUrl, isGeneral, organization, scanPath])
 
   const generateQRCode = () => {
     let checkInUrl
     if (organization) {
       const orgSlug = organization.toLowerCase().replace(/\s+/g, '')
-      checkInUrl = `${baseUrl}/check-in/${orgSlug}`
+      checkInUrl = `${baseUrl}${scanPath}/${orgSlug}`
     } else if (isGeneral) {
-      checkInUrl = `${baseUrl}/check-in`
+      checkInUrl = `${baseUrl}${scanPath}`
     } else {
       checkInUrl = `${baseUrl}/check-in/public/${event.id}`
     }

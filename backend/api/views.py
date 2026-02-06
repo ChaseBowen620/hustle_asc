@@ -42,6 +42,14 @@ class StudentViewSet(viewsets.ModelViewSet):
         print(f"Students API - Returning {len(serializer.data)} records")
         return Response(serializer.data)
 
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        user = getattr(instance, 'user', None)
+        instance.delete()
+        if user:
+            user.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 class EventListPagination(PageNumberPagination):
     page_size = 10
     page_size_query_param = 'page_size'
@@ -192,62 +200,72 @@ class EventViewSet(viewsets.ModelViewSet):
                 if not organization:
                     request.data['organization'] = admin_profile.role
             
-            # Create the main event
+            # Create the main event (first occurrence only for recurring; next occurrences created when students check in)
             serializer = self.get_serializer(data=request.data)
             serializer.is_valid(raise_exception=True)
             event = serializer.save()
             
-            # If this is a recurring event, create recurring instances
-            if event.is_recurring and event.recurrence_type != 'none':
-                self._create_recurring_instances(event)
+            # Recurring: do not pre-create all instances; next occurrence is created on first check-in
+            # (see get_or_create_next_occurrence in AttendanceViewSet.create)
             
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-    def _create_recurring_instances(self, parent_event):
-        """Create recurring instances of an event"""
-        from datetime import timedelta
-        import calendar
-        
-        current_date = parent_event.date
-        end_date = parent_event.recurrence_end_date or (current_date + timedelta(days=365))  # Default to 1 year
-        
-        while current_date <= end_date:
-            # Calculate next occurrence based on recurrence type
-            if parent_event.recurrence_type == 'daily':
-                current_date += timedelta(days=1)
-            elif parent_event.recurrence_type == 'weekly':
-                current_date += timedelta(weeks=1)
-            elif parent_event.recurrence_type == 'biweekly':
-                current_date += timedelta(weeks=2)
-            elif parent_event.recurrence_type == 'monthly':
-                # Add one month
-                if current_date.month == 12:
-                    current_date = current_date.replace(year=current_date.year + 1, month=1)
-                else:
-                    try:
-                        current_date = current_date.replace(month=current_date.month + 1)
-                    except ValueError:
-                        # Handle cases where the day doesn't exist in the next month
-                        current_date = current_date.replace(month=current_date.month + 1, day=1)
-                        current_date = current_date.replace(day=min(parent_event.date.day, calendar.monthrange(current_date.year, current_date.month)[1]))
-            else:
-                break
-            
-            if current_date <= end_date:
-                # Create recurring instance
-                Event.objects.create(
-                    name=parent_event.name,
-                    organization=parent_event.organization,
-                    event_type=parent_event.event_type,
-                    description=parent_event.description,
-                    date=current_date,
-                    location=parent_event.location,
-                    is_recurring=False,  # Instances are not recurring themselves
-                    recurrence_type='none',
-                    parent_event=parent_event
-                )
+def _compute_next_occurrence_date(template, from_date):
+    """Compute the next occurrence date from from_date using template's recurrence_type."""
+    from datetime import timedelta
+    import calendar
+    if template.recurrence_type == 'daily':
+        return from_date + timedelta(days=1)
+    if template.recurrence_type == 'weekly':
+        return from_date + timedelta(weeks=1)
+    if template.recurrence_type == 'biweekly':
+        return from_date + timedelta(weeks=2)
+    if template.recurrence_type == 'monthly':
+        if from_date.month == 12:
+            next_year, next_month = from_date.year + 1, 1
+        else:
+            next_year, next_month = from_date.year, from_date.month + 1
+        _, last_day = calendar.monthrange(next_year, next_month)
+        day = min(from_date.day, last_day)
+        return from_date.replace(year=next_year, month=next_month, day=day)
+    return None
+
+
+def get_or_create_next_occurrence(event):
+    """
+    If event is part of a recurring series, ensure the next occurrence exists (create it if not).
+    Called when attendance is recorded so the next instance appears in the list.
+    Returns the next occurrence event or None.
+    """
+    from .models import EventOrganization
+    template = event.parent_event if event.parent_event_id else event
+    if not template.is_recurring or template.recurrence_type in (None, '', 'none'):
+        return None
+    next_date = _compute_next_occurrence_date(template, event.date)
+    if next_date is None:
+        return None
+    if template.recurrence_end_date and next_date > template.recurrence_end_date:
+        return None
+    existing = Event.objects.filter(parent_event=template, date=next_date).first()
+    if existing:
+        return existing
+    new_event = Event.objects.create(
+        name=template.name,
+        organization=template.organization,
+        event_type=template.event_type or '',
+        description=template.description or '',
+        date=next_date,
+        location=template.location or '',
+        is_recurring=False,
+        recurrence_type='none',
+        parent_event=template,
+    )
+    for eo in EventOrganization.objects.filter(event=template):
+        EventOrganization.objects.get_or_create(event=new_event, organization=eo.organization)
+    return new_event
+
 
 class AttendanceViewSet(viewsets.ModelViewSet):
     queryset = Attendance.objects.select_related('student', 'event').all()
@@ -319,6 +337,9 @@ class AttendanceViewSet(viewsets.ModelViewSet):
                 student_id=student_id,
                 event_id=event_id
             )
+            
+            # Recurring events: create the next occurrence when someone checks in (so it shows in the list)
+            get_or_create_next_occurrence(event)
             
             # Return the serialized data
             return Response(
@@ -403,29 +424,59 @@ def register_student(request):
                 'error': 'A user with this A-number already exists'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Create user account
-        user = User.objects.create_user(
-            username=a_number,  # Using A-Number as username
-            password=request.data.get('password', 'changeme!'),
-            first_name=request.data.get('first_name', ''),
-            last_name=request.data.get('last_name', '')
-        )
+        # Create user account (password optional; students do not log in)
+        password = request.data.get('password') or None
+        if password:
+            user = User.objects.create_user(
+                username=a_number,
+                password=password,
+                first_name=request.data.get('first_name', ''),
+                last_name=request.data.get('last_name', '')
+            )
+        else:
+            user = User.objects.create(
+                username=a_number,
+                first_name=request.data.get('first_name', ''),
+                last_name=request.data.get('last_name', '')
+            )
+            user.set_unusable_password()
+            user.save()
         
         # Add to Students group
         student_group, _ = Group.objects.get_or_create(name='Students')
         user.groups.add(student_group)
         
-        # Student profile is automatically created via signal
+        # Student profile is automatically created via signal (synchronous)
+        try:
+            student = Student.objects.get(user=user)
+            student_id = student.id
+        except Student.DoesNotExist:
+            student_id = None
         
         return Response({
             'message': 'Student account created successfully',
-            'a_number': a_number
+            'a_number': a_number,
+            'student_id': student_id
         }, status=status.HTTP_201_CREATED)
         
     except Exception as e:
         return Response({
             'error': str(e)
         }, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def check_a_number(request):
+    """Check if an A-number is already in the system. Query param: a_number (e.g. a01234567)."""
+    a_number = (request.query_params.get('a_number') or '').lower().strip()
+    if not a_number:
+        return Response({'error': 'a_number query parameter is required'}, status=status.HTTP_400_BAD_REQUEST)
+    if not re.match(r'^a\d{8}$', a_number):
+        return Response({'error': 'Invalid A-number format'}, status=status.HTTP_400_BAD_REQUEST)
+    exists = User.objects.filter(username=a_number).exists()
+    return Response({'exists': exists})
+
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -601,11 +652,11 @@ def participating_students(request):
         current_year = now.year
         
         if current_month >= 8:  # Fall semester (Aug-Dec)
-            semester_start = timezone.make_aware(datetime(current_year, 8, 1))
-            semester_end = timezone.make_aware(datetime(current_year + 1, 1, 1))
+            semester_start = datetime(current_year, 8, 1)
+            semester_end = datetime(current_year + 1, 1, 1)
         else:  # Spring semester (Jan-July)
-            semester_start = timezone.make_aware(datetime(current_year, 1, 1))
-            semester_end = timezone.make_aware(datetime(current_year, 8, 1))
+            semester_start = datetime(current_year, 1, 1)
+            semester_end = datetime(current_year, 8, 1)
         
         count = query.filter(
             attendances__event__date__gte=semester_start,
@@ -614,9 +665,7 @@ def participating_students(request):
     
     elif filter_type == 'year':
         year = now.year if now.month >= 8 else now.year - 1
-        academic_year_start = timezone.make_aware(
-            datetime(year, 8, 1)
-        )
+        academic_year_start = datetime(year, 8, 1)
         count = query.filter(
             attendances__event__date__gte=academic_year_start
         ).distinct().count()
@@ -663,11 +712,11 @@ def student_points(request):
         current_year = now.year
         
         if current_month >= 8:  # Fall semester (Aug-Dec)
-            semester_start = timezone.make_aware(datetime(current_year, 8, 1))
-            semester_end = timezone.make_aware(datetime(current_year + 1, 1, 1))
+            semester_start = datetime(current_year, 8, 1)
+            semester_end = datetime(current_year + 1, 1, 1)
         else:  # Spring semester (Jan-July)
-            semester_start = timezone.make_aware(datetime(current_year, 1, 1))
-            semester_end = timezone.make_aware(datetime(current_year, 8, 1))
+            semester_start = datetime(current_year, 1, 1)
+            semester_end = datetime(current_year, 8, 1)
         
         # For organization filtering, we need to check both primary and secondary organizations
         if organization_filter:
@@ -711,9 +760,7 @@ def student_points(request):
     elif filter_type == 'year':
         # Calculate academic year start (August 1st of current or previous year)
         year = now.year if now.month >= 8 else now.year - 1
-        academic_year_start = timezone.make_aware(
-            datetime(year, 8, 1)
-        )
+        academic_year_start = datetime(year, 8, 1)
         
         # For organization filtering, we need to check both primary and secondary organizations
         if organization_filter:
@@ -969,6 +1016,51 @@ def delete_admin_user(request, admin_user_id):
             {'error': 'Admin user not found'},
             status=status.HTTP_404_NOT_FOUND
         )
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def no_attendance_in_period(request):
+    """Return students with zero attendances where event.date is in [start, end]. Query: start=YYYY-MM-DD&end=YYYY-MM-DD or academic_year=YYYY (past year Sept 1–April 30)."""
+    start_param = request.GET.get('start')
+    end_param = request.GET.get('end')
+    academic_year = request.GET.get('academic_year')
+    if academic_year:
+        try:
+            y = int(academic_year)
+            start_param = f'{y - 1}-09-01'
+            end_param = f'{y}-04-30'
+        except ValueError:
+            return Response({'error': 'academic_year must be a year (e.g. 2024)'}, status=status.HTTP_400_BAD_REQUEST)
+    if not start_param or not end_param:
+        return Response({'error': 'start and end (YYYY-MM-DD) or academic_year required'}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        start = datetime.strptime(start_param, '%Y-%m-%d')
+        end = datetime.strptime(end_param + ' 23:59:59', '%Y-%m-%d %H:%M:%S')
+    except ValueError:
+        return Response({'error': 'start and end must be YYYY-MM-DD'}, status=status.HTTP_400_BAD_REQUEST)
+    student_ids_with_attendance = Attendance.objects.filter(
+        event__date__range=(start, end)
+    ).values_list('student_id', flat=True).distinct()
+    students = Student.objects.exclude(id__in=student_ids_with_attendance).order_by('first_name', 'last_name')
+    serializer = StudentSerializer(students, many=True)
+    return Response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def events_before(request):
+    """Return events with date < before. Query: before=YYYY-MM-DD."""
+    before_param = request.GET.get('before')
+    if not before_param:
+        return Response({'error': 'before=YYYY-MM-DD required'}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        before = datetime.strptime(before_param, '%Y-%m-%d')
+    except ValueError:
+        return Response({'error': 'before must be YYYY-MM-DD'}, status=status.HTTP_400_BAD_REQUEST)
+    events = Event.objects.filter(date__lt=before).order_by('-date')
+    serializer = EventSerializer(events, many=True)
+    return Response(serializer.data)
+
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])

@@ -19,6 +19,8 @@ from .views import (
     update_admin_user,
     delete_admin_user,
     search_students,
+    no_attendance_in_period,
+    events_before,
     list_organizations,
     manage_organization
 )
@@ -36,9 +38,11 @@ router.register(r'teaching-assistants', TeachingAssistantViewSet)
 
 urlpatterns = [
     # Custom endpoints must come before router to avoid conflicts
+    path('students/no-attendance-in-period/', no_attendance_in_period, name='no-attendance-in-period'),
     path('students/total/', total_students, name='total-students'),
     path('students/participating/', participating_students, name='participating-students'),
     path('students/points/', student_points, name='student-points'),
+    path('events/before/', events_before, name='events-before'),
     path('attendance/overview/', attendance_overview, name='attendance-overview'),
     path('user/me/', get_user_details, name='user-details'),
     path('user/change-password/', change_password, name='change-password'),

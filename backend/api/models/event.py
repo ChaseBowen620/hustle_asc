@@ -18,12 +18,14 @@ class Event(models.Model):
     )
     event_type = models.CharField(
         max_length=100,
+        blank=True,
+        default='',
         help_text="Type of the event"
     )
     name = models.CharField(max_length=200)
-    description = models.TextField(blank=True)
+    description = models.TextField(blank=True, default='')
     date = models.DateTimeField()
-    location = models.CharField(max_length=200)
+    location = models.CharField(max_length=200, blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
     
     # Recurring event fields

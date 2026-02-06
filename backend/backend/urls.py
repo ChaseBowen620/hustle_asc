@@ -26,6 +26,7 @@ from api.views import (
     ClassViewSet,
     TeachingAssistantViewSet,
     register_student,
+    check_a_number,
     get_user_details
 )
 from rest_framework_simplejwt.views import (
@@ -46,6 +47,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include('api.urls')),
     path('api/register/', register_student, name='register-student'),
+    path('api/register/check-a-number/', check_a_number, name='check-a-number'),
     path('api/user/me/', get_user_details, name='user-details'),
     path('api-auth/', include('rest_framework.urls', namespace='rest_framework')),
     path('api/token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),

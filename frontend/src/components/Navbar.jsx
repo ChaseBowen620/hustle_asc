@@ -35,6 +35,12 @@ function Navbar() {
               <Link to="/events" className={linkClass("/events")}>
                 Events List
             </Link>
+            <Link to="/check-in" className={linkClass("/check-in")}>
+              Check-in
+            </Link>
+            <Link to="/settings" className={linkClass("/settings")}>
+              Settings
+            </Link>
           </div>
           <div>
             <Button 

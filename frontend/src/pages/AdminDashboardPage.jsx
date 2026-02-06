@@ -287,6 +287,41 @@ function AdminDashboardPage() {
           ))
         )
       }
+
+      // Filter events by date range (semester / year / all) to match the dashboard filter
+      if (filter !== "all") {
+        const now = new Date()
+        let startDate = null
+        let endDate = null
+
+        if (filter === "year") {
+          const currentMonth = now.getMonth()
+          const currentYear = now.getFullYear()
+          if (currentMonth >= 7) {
+            startDate = new Date(currentYear, 7, 1)
+            endDate = new Date(currentYear + 1, 7, 1)
+          } else {
+            startDate = new Date(currentYear - 1, 7, 1)
+            endDate = new Date(currentYear, 7, 1)
+          }
+        } else if (filter === "semester") {
+          const currentMonth = now.getMonth()
+          if (currentMonth >= 0 && currentMonth <= 4) {
+            startDate = new Date(now.getFullYear(), 0, 1)
+            endDate = new Date(now.getFullYear(), 7, 1)
+          } else {
+            startDate = new Date(now.getFullYear(), 7, 1)
+            endDate = new Date(now.getFullYear() + 1, 0, 1)
+          }
+        }
+
+        if (startDate && endDate) {
+          filteredEvents = filteredEvents.filter(event => {
+            const eventDate = new Date(event.date)
+            return eventDate >= startDate && eventDate < endDate
+          })
+        }
+      }
       
       // Create a map of event IDs to dates (only for filtered events)
       const eventDateMap = filteredEvents.reduce((acc, event) => {
@@ -645,8 +680,33 @@ function AdminDashboardPage() {
           <Card>
             <CardHeader>
               <CardTitle>Attendance Trends</CardTitle>
-              <CardDescription>Event attendance over time</CardDescription>
-              <div className="flex justify-end mt-4">
+              <CardDescription>
+                Event attendance over time ({filter === "all" ? "All Time" : filter === "year" ? "This Year" : "This Semester"})
+              </CardDescription>
+              <div className="flex flex-wrap justify-between items-center gap-4 mt-4">
+                <div className="flex space-x-2">
+                  <Button
+                    variant={filter === "all" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setFilter("all")}
+                  >
+                    All Time
+                  </Button>
+                  <Button
+                    variant={filter === "year" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setFilter("year")}
+                  >
+                    This Year
+                  </Button>
+                  <Button
+                    variant={filter === "semester" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setFilter("semester")}
+                  >
+                    This Semester
+                  </Button>
+                </div>
                 <div className="flex items-center space-x-2">
                   <label className="text-sm font-medium">Filter by Organization:</label>
                   <Select
