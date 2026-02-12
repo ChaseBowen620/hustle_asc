@@ -10,13 +10,6 @@ import { API_URL } from '@/config/api'
 import '../lib/chart'  // Import the chart registration
 import { format } from "date-fns"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -24,6 +17,15 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 
+// Colors for organizations (bar chart and timeline)
+const ORG_COLORS = [
+  'rgba(54, 162, 235, 0.85)',
+  'rgba(255, 99, 132, 0.85)',
+  'rgba(255, 206, 86, 0.85)',
+  'rgba(75, 192, 192, 0.85)',
+  'rgba(153, 102, 255, 0.85)',
+  'rgba(255, 159, 64, 0.85)',
+]
 
 function AdminDashboardPage() {
   const [students, setStudents] = useState([])
@@ -36,8 +38,9 @@ function AdminDashboardPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const studentsPerPage = 10
   const [selectedStudent, setSelectedStudent] = useState(null)
-  const [showStudentDetails, setShowStudentDetails] = useState(false)
+  const [activeTab, setActiveTab] = useState("students")
   const [studentAttendanceByOrg, setStudentAttendanceByOrg] = useState(null)
+  const [studentTimelineData, setStudentTimelineData] = useState(null)
   const [searchQuery, setSearchQuery] = useState("")
   // No authentication - show all data
   const canSeeAllData = true
@@ -48,12 +51,12 @@ function AdminDashboardPage() {
     fetchOrganizations()
   }, [filter, selectedOrganization])
 
-  // Refresh student attendance chart when filter changes and dialog is open
+  // Refresh student metrics when filter or organization changes and a student is selected
   useEffect(() => {
-    if (showStudentDetails && selectedStudent) {
+    if (selectedStudent) {
       fetchStudentAttendanceByOrg(selectedStudent.id)
     }
-  }, [filter])
+  }, [filter, selectedOrganization])
 
   const fetchStudentData = async () => {
     try {
@@ -152,110 +155,152 @@ function AdminDashboardPage() {
   }
 
 
+  // Helper: get all org names for an event (primary + secondaries)
+  const getEventOrgNames = (event) => {
+        const primary = event.organization || 'Unknown'
+        const secondaries = (event.event_organizations || []).map(eo => eo.organization_name || eo.organization).filter(Boolean)
+        return [...new Set([primary, ...secondaries])]
+      }
+
   const fetchStudentAttendanceByOrg = async (studentId) => {
     try {
-      // Fetch all attendances and filter by student on frontend
-      // (The API might not support student filtering directly)
       const attendanceResponse = await axios.get(`${API_URL}/api/attendance`)
       const allAttendances = attendanceResponse.data
-      
-      // Fetch all events to get organization info and dates
       const eventsResponse = await axios.get(`${API_URL}/api/events/?page_size=1000`)
-      const events = eventsResponse.data.results ?? eventsResponse.data ?? []
-      
-      // Create a map of event ID to organization and date
-      const eventMap = {}
-      events.forEach(event => {
-        eventMap[event.id] = {
-          organization: event.organization || 'Unknown',
-          date: new Date(event.date)
-        }
-      })
-      
-      // Calculate date range based on filter
+      const allEvents = eventsResponse.data.results ?? eventsResponse.data ?? []
+
+      // Filter events by organization (same as dashboard)
+      let events = allEvents
+      if (selectedOrganization) {
+        events = allEvents.filter(event =>
+          event.organization === selectedOrganization ||
+          (event.event_organizations && event.event_organizations.some(eo =>
+            (eo.organization_name || eo.organization) === selectedOrganization
+          ))
+        )
+      }
+
+      // Date range for filter
       const now = new Date()
       let startDate = null
-      
+      let endDate = null
       if (filter === "year") {
-        // Academic year: Fall semester starts in August
         const currentMonth = now.getMonth()
         const currentYear = now.getFullYear()
-        
-        if (currentMonth >= 7) { // Aug-Dec (Fall semester)
-          // Current academic year started in August of current year
-          startDate = new Date(currentYear, 7, 1) // August 1st of current year
-        } else { // Jan-July (Spring semester)
-          // Current academic year started in August of previous year
-          startDate = new Date(currentYear - 1, 7, 1) // August 1st of previous year
+        if (currentMonth >= 7) {
+          startDate = new Date(currentYear, 7, 1)
+          endDate = new Date(currentYear + 1, 7, 1)
+        } else {
+          startDate = new Date(currentYear - 1, 7, 1)
+          endDate = new Date(currentYear, 7, 1)
         }
       } else if (filter === "semester") {
-        // Assuming fall semester starts in August, spring in January
         const currentMonth = now.getMonth()
-        if (currentMonth >= 0 && currentMonth <= 4) { // Jan-May (Spring)
+        if (currentMonth >= 0 && currentMonth <= 4) {
           startDate = new Date(now.getFullYear(), 0, 1)
-        } else { // Aug-Dec (Fall)
-          startDate = new Date(now.getFullYear(), 7, 1) // August 1st
+          endDate = new Date(now.getFullYear(), 7, 1)
+        } else {
+          startDate = new Date(now.getFullYear(), 7, 1)
+          endDate = new Date(now.getFullYear() + 1, 0, 1)
         }
       }
-      
-      // Filter attendances for this specific student and by date
+
+      if (filter !== "all" && startDate && endDate) {
+        events = events.filter(event => {
+          const d = new Date(event.date)
+          return d >= startDate && d < endDate
+        })
+      }
+
+      // eventId -> { dateStr, orgNames, primaryOrg }
+      const eventMap = {}
+      events.forEach(event => {
+        const dateStr = event.date.split('T')[0]
+        const primaryOrg = event.organization || 'Unknown'
+        eventMap[event.id] = { dateStr, orgNames: getEventOrgNames(event), primaryOrg }
+      })
+
+      const filteredEventIds = new Set(events.map(e => e.id))
+
+      // Student attendances in filtered set
       const attendances = allAttendances.filter(attendance => {
-        // Filter by student
-        const studentIdValue = typeof attendance.student === 'object' 
-          ? attendance.student?.id 
+        const studentIdValue = typeof attendance.student === 'object'
+          ? attendance.student?.id
           : attendance.student || attendance.student_id
         if (studentIdValue !== studentId) return false
-        
-        // Filter by date if filter is not "all"
-        if (filter !== "all" && startDate) {
-          const eventId = typeof attendance.event === 'object' 
-            ? attendance.event?.id 
-            : attendance.event || attendance.event_id
-          const eventInfo = eventMap[eventId]
-          if (!eventInfo) return false
-          
-          const eventDate = eventInfo.date
-          if (filter === "semester") {
-            // For semester, also need end date
-            const currentMonth = now.getMonth()
-            let endDate
-            if (currentMonth >= 0 && currentMonth <= 4) { // Jan-May (Spring)
-              endDate = new Date(now.getFullYear(), 7, 1) // August 1st
-            } else { // Aug-Dec (Fall)
-              endDate = new Date(now.getFullYear() + 1, 0, 1) // January 1st of next year
-            }
-            return eventDate >= startDate && eventDate < endDate
-          } else if (filter === "year") {
-            // For year, include all events from startDate onwards
-            return eventDate >= startDate
-          }
-        }
-        
-        return true
+        const eventId = typeof attendance.event === 'object'
+          ? attendance.event?.id
+          : attendance.event || attendance.event_id
+        return filteredEventIds.has(eventId)
       })
-      
-      // Group attendances by organization
+
+      // Bar chart: when viewing one org (filter), count that org; when viewing all orgs, count each attendance once (primary org only)
       const orgCounts = {}
       attendances.forEach(attendance => {
-        // The event field can be an ID (number) or an object with an id property
-        const eventId = typeof attendance.event === 'object' 
-          ? attendance.event?.id 
+        const eventId = typeof attendance.event === 'object'
+          ? attendance.event?.id
           : attendance.event || attendance.event_id
-        const eventInfo = eventMap[eventId]
-        const org = eventInfo ? eventInfo.organization : 'Unknown'
-        orgCounts[org] = (orgCounts[org] || 0) + 1
+        const info = eventMap[eventId]
+        if (!info) return
+        if (selectedOrganization) {
+          // One org filter: count for that org only
+          if (info.orgNames.includes(selectedOrganization)) orgCounts[selectedOrganization] = (orgCounts[selectedOrganization] || 0) + 1
+        } else {
+          // All orgs: one attendance per event, attribute to primary org only
+          const primary = info.primaryOrg
+          orgCounts[primary] = (orgCounts[primary] || 0) + 1
+        }
       })
-      
       setStudentAttendanceByOrg(orgCounts)
+
+      // Timeline: per-org event dates only (each row has circles only for dates that org had an event)
+      const orgEventDates = {}
+      events.forEach(event => {
+        const dateStr = event.date.split('T')[0]
+        const orgsToAdd = selectedOrganization
+          ? (getEventOrgNames(event).includes(selectedOrganization) ? [selectedOrganization] : [])
+          : getEventOrgNames(event)
+        orgsToAdd.forEach(org => {
+          if (!orgEventDates[org]) orgEventDates[org] = []
+          orgEventDates[org].push(dateStr)
+        })
+      })
+      Object.keys(orgEventDates).forEach(org => {
+        orgEventDates[org] = [...new Set(orgEventDates[org])].sort()
+      })
+
+      const orgAttendance = {}
+      Object.keys(orgEventDates).forEach(org => { orgAttendance[org] = new Set() })
+      attendances.forEach(attendance => {
+        const eventId = typeof attendance.event === 'object'
+          ? attendance.event?.id
+          : attendance.event || attendance.event_id
+        const info = eventMap[eventId]
+        if (!info) return
+        if (selectedOrganization) {
+          if (info.orgNames.includes(selectedOrganization)) orgAttendance[selectedOrganization].add(info.dateStr)
+        } else {
+          // No filter: fill circle for every org tied to this event (primary + sub-orgs), so PyData etc. show attended
+          info.orgNames.forEach(org => {
+            if (orgAttendance[org]) orgAttendance[org].add(info.dateStr)
+          })
+        }
+      })
+      const orgAttendanceSerialized = {}
+      Object.keys(orgAttendance).forEach(org => {
+        orgAttendanceSerialized[org] = orgAttendance[org]
+      })
+      setStudentTimelineData({ orgDates: orgEventDates, orgAttendance: orgAttendanceSerialized })
     } catch (error) {
       console.error('Error fetching student attendance:', error)
       setStudentAttendanceByOrg({})
+      setStudentTimelineData(null)
     }
   }
 
   const handleStudentClick = async (student) => {
     setSelectedStudent(student)
-    setShowStudentDetails(true)
+    setActiveTab("student-metrics")
     await fetchStudentAttendanceByOrg(student.id)
   }
 
@@ -567,69 +612,73 @@ function AdminDashboardPage() {
         </Card>
       </div>
 
-      <Tabs defaultValue="students" className="space-y-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList>
-          <TabsTrigger value="students">Student Overview</TabsTrigger>
+          <TabsTrigger value="students">Attendance Ranking</TabsTrigger>
           <TabsTrigger value="attendance">Attendance Trends</TabsTrigger>
+          <TabsTrigger value="student-metrics">Student Metrics</TabsTrigger>
         </TabsList>
+
+        <div className="flex flex-wrap justify-between items-center gap-4">
+          <div className="flex space-x-2">
+            <Button
+              variant={filter === "all" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setFilter("all")}
+            >
+              All Time
+            </Button>
+            <Button
+              variant={filter === "year" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setFilter("year")}
+            >
+              This Year
+            </Button>
+            <Button
+              variant={filter === "semester" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setFilter("semester")}
+            >
+              This Semester
+            </Button>
+          </div>
+          <div className="flex items-center space-x-2">
+            <label className="text-sm font-medium">Filter by Organization:</label>
+            <Select
+              value={selectedOrganization || "all"}
+              onValueChange={(value) => {
+                setSelectedOrganization(value === "all" ? "" : value)
+                setCurrentPage(1)
+              }}
+            >
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="All Organizations" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Organizations</SelectItem>
+                {organizations.map((org) => (
+                  <SelectItem key={org.id ?? org.name} value={org.name || org}>
+                    {org.name || org}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
 
         <TabsContent value="students" className="space-y-4">
           <div className="flex justify-between items-center">
-            <div className="flex items-center space-x-2">
-              <label className="text-sm font-medium">Filter by Organization:</label>
-              <Select
-                value={selectedOrganization || "all"}
-                onValueChange={(value) => {
-                  setSelectedOrganization(value === "all" ? "" : value)
-                  setCurrentPage(1) // Reset to first page when filter changes
-                }}
-              >
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="All Organizations" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Organizations</SelectItem>
-                  {organizations.map((org) => (
-                    <SelectItem
-                      key={org.id ?? org.name}
-                      value={org.name || org}
-                    >
-                      {org.name || org}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Input
-                type="text"
-                placeholder="Search students by name..."
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value)
-                  setCurrentPage(1) // Reset to first page when search changes
-                }}
-                className="w-[250px]"
-              />
-            </div>
-            <div className="flex space-x-2">
-              <Button
-                variant={filter === "all" ? "default" : "outline"}
-                onClick={() => setFilter("all")}
-              >
-                All Time
-              </Button>
-              <Button
-                variant={filter === "year" ? "default" : "outline"}
-                onClick={() => setFilter("year")}
-              >
-                This Year
-              </Button>
-              <Button
-                variant={filter === "semester" ? "default" : "outline"}
-                onClick={() => setFilter("semester")}
-              >
-                This Semester
-              </Button>
-            </div>
+            <Input
+              type="text"
+              placeholder="Search students by name..."
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value)
+                setCurrentPage(1)
+              }}
+              className="w-[250px]"
+            />
           </div>
 
           <div className="border rounded-lg">
@@ -683,55 +732,6 @@ function AdminDashboardPage() {
               <CardDescription>
                 Event attendance over time ({filter === "all" ? "All Time" : filter === "year" ? "This Year" : "This Semester"})
               </CardDescription>
-              <div className="flex flex-wrap justify-between items-center gap-4 mt-4">
-                <div className="flex space-x-2">
-                  <Button
-                    variant={filter === "all" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setFilter("all")}
-                  >
-                    All Time
-                  </Button>
-                  <Button
-                    variant={filter === "year" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setFilter("year")}
-                  >
-                    This Year
-                  </Button>
-                  <Button
-                    variant={filter === "semester" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setFilter("semester")}
-                  >
-                    This Semester
-                  </Button>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <label className="text-sm font-medium">Filter by Organization:</label>
-                  <Select
-                    value={selectedOrganization || "all"}
-                    onValueChange={(value) => {
-                      setSelectedOrganization(value === "all" ? "" : value)
-                    }}
-                  >
-                    <SelectTrigger className="w-[200px]">
-                      <SelectValue placeholder="All Organizations" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Organizations</SelectItem>
-                      {organizations.map((org, index) => (
-                        <SelectItem 
-                          key={`org-${index}`} 
-                          value={org.name || org}
-                        >
-                          {org.name || org}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
             </CardHeader>
             <CardContent>
               <div style={{ height: '400px' }}>
@@ -740,88 +740,117 @@ function AdminDashboardPage() {
             </CardContent>
           </Card>
         </TabsContent>
-      </Tabs>
 
-      {/* Student Details Dialog */}
-      <Dialog open={showStudentDetails} onOpenChange={setShowStudentDetails}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>
-              {selectedStudent && `${selectedStudent.first_name} ${selectedStudent.last_name}`}
-            </DialogTitle>
-            <DialogDescription>
-              Student attendance by organization ({filter === "all" ? "All Time" : filter === "year" ? "This Year" : "This Semester"})
-            </DialogDescription>
-          </DialogHeader>
-          {selectedStudent && (
-            <div className="space-y-4">
-              <div>
-                <h4 className="font-semibold text-sm text-gray-600 mb-1">A-Number</h4>
-                <p className="text-sm text-gray-700">
-                  {selectedStudent.user?.username || selectedStudent.user?.a_number || selectedStudent.a_number || 'N/A'}
-                </p>
-              </div>
-              
-              {studentAttendanceByOrg && Object.keys(studentAttendanceByOrg).length > 0 ? (
-                <div>
-                  <h4 className="font-semibold text-sm text-gray-600 mb-4">Attendance by Organization</h4>
-                  <div style={{ height: '300px' }}>
-                    <Bar
-                      data={{
-                        labels: Object.keys(studentAttendanceByOrg),
-                        datasets: [
-                          {
-                            label: 'Number of Attendances',
-                            data: Object.values(studentAttendanceByOrg),
-                            backgroundColor: [
-                              'rgba(54, 162, 235, 0.6)',
-                              'rgba(255, 99, 132, 0.6)',
-                              'rgba(255, 206, 86, 0.6)',
-                              'rgba(75, 192, 192, 0.6)',
-                              'rgba(153, 102, 255, 0.6)',
-                              'rgba(255, 159, 64, 0.6)',
-                            ],
-                            borderColor: [
-                              'rgba(54, 162, 235, 1)',
-                              'rgba(255, 99, 132, 1)',
-                              'rgba(255, 206, 86, 1)',
-                              'rgba(75, 192, 192, 1)',
-                              'rgba(153, 102, 255, 1)',
-                              'rgba(255, 159, 64, 1)',
-                            ],
-                            borderWidth: 1,
-                          },
-                        ],
-                      }}
-                      options={{
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        scales: {
-                          y: {
-                            beginAtZero: true,
-                            ticks: {
-                              stepSize: 1,
-                            },
-                          },
-                        },
-                        plugins: {
-                          legend: {
-                            display: false,
-                          },
-                        },
-                      }}
-                    />
+        <TabsContent value="student-metrics" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>
+                {selectedStudent ? `${selectedStudent.first_name} ${selectedStudent.last_name}` : 'Student Metrics'}
+              </CardTitle>
+              <CardDescription>
+                {selectedStudent
+                  ? `Attendance by organization (${filter === "all" ? "All Time" : filter === "year" ? "This Year" : "This Semester"})`
+                  : 'Select a student from the Attendance Ranking tab to view their metrics here.'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {selectedStudent ? (
+                <div className="space-y-6">
+                  <div>
+                    <h4 className="font-semibold text-sm text-gray-600 mb-1">A-Number</h4>
+                    <p className="text-sm text-gray-700">
+                      {selectedStudent.user?.username || selectedStudent.user?.a_number || selectedStudent.a_number || 'N/A'}
+                    </p>
                   </div>
+
+                  {studentAttendanceByOrg && Object.keys(studentAttendanceByOrg).length > 0 ? (
+                    <div>
+                      <h4 className="font-semibold text-sm text-gray-600 mb-4">Attendance by Organization</h4>
+                      <div style={{ height: '300px' }}>
+                        <Bar
+                          data={{
+                            labels: Object.keys(studentAttendanceByOrg),
+                            datasets: [
+                              {
+                                label: 'Number of Attendances',
+                                data: Object.values(studentAttendanceByOrg),
+                                backgroundColor: Object.keys(studentAttendanceByOrg).map((_, i) => ORG_COLORS[i % ORG_COLORS.length].replace('0.85', '0.6')),
+                                borderColor: Object.keys(studentAttendanceByOrg).map((_, i) => ORG_COLORS[i % ORG_COLORS.length].replace('0.85', '1')),
+                                borderWidth: 1,
+                              },
+                            ],
+                          }}
+                          options={{
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            scales: {
+                              y: {
+                                beginAtZero: true,
+                                ticks: {
+                                  stepSize: 1,
+                                },
+                              },
+                            },
+                            plugins: {
+                              legend: {
+                                display: false,
+                              },
+                            },
+                          }}
+                        />
+                      </div>
+
+                      {studentTimelineData && Object.keys(studentTimelineData.orgDates || {}).length > 0 && (
+                        <div className="mt-6">
+                          <h4 className="font-semibold text-sm text-gray-600 mb-3">Attendance by date</h4>
+                          <p className="text-xs text-gray-500 mb-2">
+                            Each circle is an event date for that organization. Filled = attended; empty = did not attend.
+                          </p>
+                          <div className="space-y-3">
+                            {Object.keys(studentTimelineData.orgDates).sort().map((orgName, orgIndex) => {
+                              const dates = studentTimelineData.orgDates[orgName] || []
+                              const attendedSet = studentTimelineData.orgAttendance[orgName]
+                              const color = ORG_COLORS[orgIndex % ORG_COLORS.length]
+                              return (
+                                <div key={orgName} className="flex flex-wrap items-center gap-1">
+                                  <span className="text-xs font-medium text-gray-600 w-32 shrink-0" title={orgName}>
+                                    {orgName.length > 14 ? orgName.slice(0, 12) + '…' : orgName}
+                                  </span>
+                                  <div className="flex flex-wrap gap-0.5 items-center min-w-0">
+                                    {dates.map((dateStr) => {
+                                      const attended = attendedSet && attendedSet.has && attendedSet.has(dateStr)
+                                      return (
+                                        <span
+                                          key={dateStr}
+                                          className="inline-block rounded-full shrink-0 border border-gray-200"
+                                          style={{
+                                            width: 10,
+                                            height: 10,
+                                            backgroundColor: attended ? color : 'transparent',
+                                          }}
+                                          title={`${dateStr}${attended ? ' – attended' : ' – did not attend'}`}
+                                        />
+                                      )
+                                    })}
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500">No attendance data available for this student.</p>
+                  )}
                 </div>
               ) : (
-                <div>
-                  <p className="text-sm text-gray-500">No attendance data available for this student.</p>
-                </div>
+                <p className="text-sm text-gray-500">Click a student in the Attendance Ranking tab to view their metrics here.</p>
               )}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

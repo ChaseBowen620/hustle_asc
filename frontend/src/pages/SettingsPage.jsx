@@ -36,6 +36,7 @@ function SettingsPage() {
   const [loadingOld, setLoadingOld] = useState(false)
   const [deletingAllStudents, setDeletingAllStudents] = useState(false)
   const [deletingAllEvents, setDeletingAllEvents] = useState(false)
+  const [deletingEventId, setDeletingEventId] = useState(null)
   const { toast } = useToast()
   const { user } = useAuth()
 
@@ -139,6 +140,25 @@ function SettingsPage() {
     setDeletingAllEvents(false)
   }
 
+  const handleDeleteOneEvent = async (event) => {
+    if (!event?.id) return
+    if (!confirm(`Delete "${event.name}" (${event.date ? new Date(event.date).toLocaleDateString() : "—"})? Attendances will be removed.`)) return
+    setDeletingEventId(event.id)
+    try {
+      await axios.delete(`${API_URL}/api/events/${event.id}/`, authHeaders)
+      toast({ title: "Deleted", description: "Event deleted." })
+      fetchOldEvents()
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: err.response?.data?.error || err.message,
+        variant: "destructive",
+      })
+    } finally {
+      setDeletingEventId(null)
+    }
+  }
+
   const aNumber = (s) => s?.username || s?.user?.username || ""
 
   return (
@@ -155,7 +175,7 @@ function SettingsPage() {
               <div>
                 <CardTitle>Students with no attendance since {range.staleSince}</CardTitle>
                 <CardDescription>
-                  Students who have not had an attendance since {range.staleSince}.
+                  Marked within the past academic year.
                 </CardDescription>
               </div>
               {staleStudents.length > 0 && (
@@ -228,6 +248,7 @@ function SettingsPage() {
                     <TableRow>
                       <TableHead>Name</TableHead>
                       <TableHead>Date</TableHead>
+                      <TableHead className="w-[80px] text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -235,6 +256,16 @@ function SettingsPage() {
                       <TableRow key={e.id}>
                         <TableCell>{e.name}</TableCell>
                         <TableCell>{e.date ? new Date(e.date).toLocaleDateString() : "—"}</TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            disabled={deletingEventId === e.id || deletingAllEvents}
+                            onClick={() => handleDeleteOneEvent(e)}
+                          >
+                            {deletingEventId === e.id ? "Deleting…" : "Delete"}
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
