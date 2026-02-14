@@ -26,14 +26,13 @@ function PrivateRoute({ children }) {
 }
 
 function AppContent() {
-  const { user, isAdmin } = useAuth()
-  const userIsAdmin = isAdmin(user)
+  const { user } = useAuth()
   const location = useLocation()
   const isScanPage = location.pathname === "/scan" || location.pathname.startsWith("/scan/")
 
   return (
     <div>
-      {user && !isScanPage ? <Navbar /> : !isScanPage ? <PublicNavbar /> : null}
+      {user && !isScanPage ? <Navbar /> : !user && !isScanPage ? <PublicNavbar /> : null}
       <Routes>
           <Route element={<Layout />}>
             {/* Public routes */}
@@ -65,12 +64,12 @@ function AppContent() {
               element={user ? <CheckInPage /> : <PublicCheckInPage />}
             />
 
-            {/* Dashboard - shows Admin or Student view based on role */}
+            {/* Dashboard - logged-in users see Admin dashboard (only login is /login) */}
             <Route
               path="/dashboard"
               element={
                 <PrivateRoute>
-                  {userIsAdmin ? <AdminDashboardPage /> : <StudentDashboard />}
+                  <AdminDashboardPage />
                 </PrivateRoute>
               }
             />
@@ -85,13 +84,9 @@ function AppContent() {
               }
             />
 
-            {/* Admin-only routes */}
-            {userIsAdmin && (
-              <>
-                <Route path="/events" element={<EventsListPage />} />
-                <Route path="/events/:eventId/edit" element={<EventEditPage />} />
-              </>
-            )}
+            {/* Events - any logged-in user can manage events */}
+            <Route path="/events" element={<PrivateRoute><EventsListPage /></PrivateRoute>} />
+            <Route path="/events/:eventId/edit" element={<PrivateRoute><EventEditPage /></PrivateRoute>} />
 
             {/* Public check-in (unauthenticated users only) */}
             <Route path="/check-in-guest" element={<GeneralCheckInPage />} />

@@ -12,6 +12,19 @@ from .models import Student, Event, Attendance, Semester, Organization, EventOrg
 from datetime import datetime
 import re
 
+def _naive_dt(iso_str_or_none):
+    """Parse ISO datetime string to naive datetime (for SQLite when USE_TZ=False)."""
+    if not iso_str_or_none:
+        return None
+    s = iso_str_or_none.replace('Z', '+00:00')
+    try:
+        dt = datetime.fromisoformat(s)
+        if hasattr(dt, 'tzinfo') and dt.tzinfo is not None:
+            dt = dt.replace(tzinfo=None)
+        return dt
+    except (ValueError, TypeError):
+        return None
+
 logger = logging.getLogger(__name__)
 
 # Dedicated debug logger for OneTap webhook requests → writes to log.txt in this directory
@@ -189,25 +202,15 @@ def process_onetap_checkin(participant_data, profile_data, list_data):
         
         event_name = raw_event_name
         
-        # Parse event date
-        try:
-            if event_date_str:
-                # OneTap sends ISO format, convert to datetime
-                event_date = datetime.fromisoformat(event_date_str.replace('Z', '+00:00'))
-            else:
-                # Use current time if no date provided
-                event_date = datetime.now()
-        except ValueError:
+        # Parse event date (naive datetime for SQLite when USE_TZ=False)
+        event_date = _naive_dt(event_date_str) if event_date_str else None
+        if event_date is None:
             event_date = datetime.now()
         
-        # Extract check-in time
+        # Extract check-in time (naive datetime)
         check_in_date_str = participant_data.get('checkInDate', '')
-        try:
-            if check_in_date_str:
-                check_in_time = datetime.fromisoformat(check_in_date_str.replace('Z', '+00:00'))
-            else:
-                check_in_time = datetime.now()
-        except ValueError:
+        check_in_time = _naive_dt(check_in_date_str) if check_in_date_str else None
+        if check_in_time is None:
             check_in_time = datetime.now()
         
         # Step 1: Create or find student
@@ -358,36 +361,47 @@ def create_or_find_student(first_name, last_name, email, a_number, phone):
     if User.objects.filter(email=email).exists():
         user = User.objects.get(email=email)
         logger.info(f"Found existing user by email: {user.username}")
-        # Check if student profile already exists for this user
+        # Check if student profile already exists for this user (post_save signal may have created it)
         if Student.objects.filter(user=user).exists():
             student = Student.objects.get(user=user)
             logger.info(f"Found existing student profile for user: {student.first_name} {student.last_name}")
             return student
-    else:
-        # Create user account with password "changeme!"
-        user = User.objects.create_user(
-            username=username,
-            email=email,
-            password='changeme!',
+        # User exists but no student (e.g. created before signal) — create student
+        student = Student.objects.create(
+            user=user,
             first_name=first_name,
             last_name=last_name,
-            is_active=True
+            username=username
         )
-        logger.info(f"Created new user: {user.username}")
+        logger.info(f"Created new student for existing user: {student.first_name} {student.last_name} ({email})")
+        return student
     
-    # Create student profile (user is guaranteed to exist at this point)
-    student = Student.objects.create(
-        user=user,
+    # Create user account (password "changeme!"); post_save signal usually creates Student automatically
+    user = User.objects.create_user(
+        username=username,
+        email=email,
+        password='changeme!',
         first_name=first_name,
         last_name=last_name,
-        username=username
+        is_active=True
     )
-    
-    logger.info(f"Created new student: {student.first_name} {student.last_name} ({email})")
+    logger.info(f"Created new user: {user.username}")
+    # Get the Student created by signal, or create if signal didn't run (e.g. in tests)
+    student, created = Student.objects.get_or_create(
+        user=user,
+        defaults={'first_name': first_name, 'last_name': last_name, 'username': username}
+    )
+    if created:
+        logger.info(f"Created new student (no signal): {student.first_name} {student.last_name} ({email})")
+    else:
+        logger.info(f"Using signal-created student: {student.first_name} {student.last_name} ({email})")
     return student
 
 def create_or_find_event(event_name, event_date, event_description, primary_org_name=None, secondary_org_names=None):
     """Create or find an event based on OneTap list data. primary_org_name and secondary_org_names are organization names."""
+    # Ensure naive datetime for SQLite when USE_TZ=False (defensive: in case caller passes aware dt)
+    if event_date is not None and hasattr(event_date, 'tzinfo') and event_date.tzinfo is not None:
+        event_date = event_date.replace(tzinfo=None)
     if not primary_org_name:
         Organization.objects.get_or_create(name='Other')
         primary_org_name = 'Other'

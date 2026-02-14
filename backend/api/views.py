@@ -2,7 +2,7 @@ from django.shortcuts import render
 from django.http import HttpResponse
 
 from rest_framework import viewsets, status
-from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.decorators import action, api_view, authentication_classes, permission_classes
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 from django.utils import timezone
@@ -20,7 +20,7 @@ from .serializers import (
     ClassListSerializer,
 )
 from django.contrib.auth.models import User, Group
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny
 import re
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
@@ -35,6 +35,7 @@ class StudentViewSet(viewsets.ModelViewSet):
     queryset = Student.objects.all().order_by('first_name', 'last_name')
     serializer_class = StudentSerializer
     permission_classes = [AllowAny]  # Make read operations public
+    authentication_classes = []  # No JWT; avoid 401 on invalid/expired token (e.g. Settings delete)
 
     def list(self, request):
         queryset = self.get_queryset()
@@ -60,6 +61,7 @@ class EventViewSet(viewsets.ModelViewSet):
     queryset = Event.objects.all()
     serializer_class = EventSerializer
     permission_classes = [AllowAny]  # Make read operations public
+    authentication_classes = []  # No JWT; avoid 401 on invalid/expired token (e.g. Settings delete)
     pagination_class = EventListPagination
 
     def get_queryset(self):
@@ -270,7 +272,8 @@ def get_or_create_next_occurrence(event):
 class AttendanceViewSet(viewsets.ModelViewSet):
     queryset = Attendance.objects.select_related('student', 'event').all()
     serializer_class = AttendanceSerializer
-    permission_classes = [AllowAny]  # Make read operations public
+    permission_classes = [AllowAny]
+    authentication_classes = []
 
     def get_queryset(self):
         """Filter attendance by organization based on admin role; optional filter by event id (?event=)."""
@@ -356,10 +359,14 @@ class AttendanceViewSet(viewsets.ModelViewSet):
 class SemesterViewSet(viewsets.ModelViewSet):
     queryset = Semester.objects.all().order_by('-year', 'season')
     serializer_class = SemesterSerializer
+    permission_classes = [AllowAny]
+    authentication_classes = []
 
 class ProfessorViewSet(viewsets.ModelViewSet):
     queryset = Professor.objects.all().order_by('first_name', 'last_name')
     serializer_class = ProfessorSerializer
+    permission_classes = [AllowAny]
+    authentication_classes = []
 
     def list(self, request):
         queryset = self.get_queryset()
@@ -369,7 +376,9 @@ class ProfessorViewSet(viewsets.ModelViewSet):
 
 class ClassViewSet(viewsets.ModelViewSet):
     queryset = Class.objects.select_related('professor', 'semester').all().order_by('course_code')
-    
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
     def get_serializer_class(self):
         if self.action == 'list' or self.action == 'retrieve':
             return ClassSerializer
@@ -382,7 +391,9 @@ class TeachingAssistantViewSet(viewsets.ModelViewSet):
         'class_assigned__professor',
         'class_assigned__semester'
     ).all()
-    
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:
             return TeachingAssistantCreateSerializer
@@ -395,6 +406,7 @@ class TeachingAssistantViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 def register_student(request):
     try:
@@ -466,6 +478,7 @@ def register_student(request):
 
 
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 def check_a_number(request):
     """Check if an A-number is already in the system. Query param: a_number (e.g. a01234567)."""
@@ -479,12 +492,26 @@ def check_a_number(request):
 
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@authentication_classes([])
+@permission_classes([AllowAny])
 def get_user_details(request):
+    """Return current user details if authenticated; otherwise minimal anonymous payload."""
+    if not getattr(request.user, 'is_authenticated', False) or not request.user.is_authenticated:
+        return Response({
+            'id': None,
+            'username': '',
+            'first_name': '',
+            'last_name': '',
+            'groups': [],
+            'is_superuser': False,
+            'student_id': None,
+            'student_profile': None,
+            'admin_profile': None,
+            'is_admin': False
+        })
     user = request.user
     student = user.student_profile if hasattr(user, 'student_profile') else None
     admin_profile = user.adminuser if hasattr(user, 'adminuser') else None
-    
     return Response({
         'id': user.id,
         'username': user.username,
@@ -507,9 +534,12 @@ def get_user_details(request):
     })
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@authentication_classes([])
+@permission_classes([AllowAny])
 def change_password(request):
-    """Change user password"""
+    """Change user password. Requires authenticated user."""
+    if not getattr(request.user, 'is_authenticated', False) or not request.user.is_authenticated:
+        return Response({'error': 'You must be logged in to change your password.'}, status=status.HTTP_400_BAD_REQUEST)
     try:
         user = request.user
         current_password = request.data.get('current_password')
@@ -589,9 +619,10 @@ class CustomTokenObtainPairView(TokenObtainPairView):
 
 
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 def total_students(request):
-    # Check if user is admin and filter by organization
+    # Optional organization filter via query param
     organization_filter = request.GET.get('organization', None)
     admin_profile = getattr(request.user, 'adminuser', None)
     
@@ -616,6 +647,7 @@ def total_students(request):
     return Response({'count': count})
 
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 def participating_students(request):
     filter_type = request.GET.get('filter', 'semester')
@@ -676,6 +708,7 @@ def participating_students(request):
     return Response({'count': count})
 
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 def student_points(request):
     filter_type = request.GET.get('filter', 'semester')
@@ -839,16 +872,10 @@ def student_points(request):
     return Response(data)
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@authentication_classes([])
+@permission_classes([AllowAny])
 def list_admin_users(request):
-    """Get all admin users - only accessible to Super Admin, DAISSA, or Faculty"""
-    admin_profile = getattr(request.user, 'adminuser', None)
-    if not admin_profile or admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
-        return Response(
-            {'error': 'You do not have permission to view admin users'},
-            status=status.HTTP_403_FORBIDDEN
-        )
-    
+    """Get all admin users."""
     from .models import AdminUser
     admin_users = AdminUser.objects.select_related('user').all().order_by('last_name', 'first_name')
     
@@ -868,16 +895,10 @@ def list_admin_users(request):
     return Response(admin_users_data)
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@authentication_classes([])
+@permission_classes([AllowAny])
 def create_admin_user(request):
-    """Create a new admin user - only accessible to Super Admin, DAISSA, or Faculty"""
-    admin_profile = getattr(request.user, 'adminuser', None)
-    if not admin_profile or admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
-        return Response(
-            {'error': 'You do not have permission to create admin users'},
-            status=status.HTTP_403_FORBIDDEN
-        )
-    
+    """Create a new admin user."""
     from .models import AdminUser
     from django.contrib.auth.models import User
     
@@ -959,16 +980,10 @@ def create_admin_user(request):
     }, status=status.HTTP_201_CREATED)
 
 @api_view(['PUT', 'PATCH'])
-@permission_classes([IsAuthenticated])
+@authentication_classes([])
+@permission_classes([AllowAny])
 def update_admin_user(request, admin_user_id):
-    """Update an admin user - only accessible to Super Admin, DAISSA, or Faculty"""
-    admin_profile = getattr(request.user, 'adminuser', None)
-    if not admin_profile or admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
-        return Response(
-            {'error': 'You do not have permission to update admin users'},
-            status=status.HTTP_403_FORBIDDEN
-        )
-    
+    """Update an admin user."""
     from .models import AdminUser
     
     try:
@@ -995,16 +1010,10 @@ def update_admin_user(request, admin_user_id):
     })
 
 @api_view(['DELETE'])
-@permission_classes([IsAuthenticated])
+@authentication_classes([])
+@permission_classes([AllowAny])
 def delete_admin_user(request, admin_user_id):
-    """Delete an admin user - only accessible to Super Admin, DAISSA, or Faculty"""
-    admin_profile = getattr(request.user, 'adminuser', None)
-    if not admin_profile or admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
-        return Response(
-            {'error': 'You do not have permission to delete admin users'},
-            status=status.HTTP_403_FORBIDDEN
-        )
-    
+    """Delete an admin user."""
     from .models import AdminUser
     
     try:
@@ -1018,6 +1027,7 @@ def delete_admin_user(request, admin_user_id):
         )
 
 @api_view(['GET'])
+@authentication_classes([])  # avoid 401 on invalid/expired JWT; this endpoint is AllowAny
 @permission_classes([AllowAny])
 def no_attendance_in_period(request):
     """Return students with zero attendances where event.date is in [start, end]. Query: start=YYYY-MM-DD&end=YYYY-MM-DD or academic_year=YYYY (past year Sept 1–April 30)."""
@@ -1047,6 +1057,7 @@ def no_attendance_in_period(request):
 
 
 @api_view(['GET'])
+@authentication_classes([])  # avoid 401 on invalid/expired JWT; this endpoint is AllowAny
 @permission_classes([AllowAny])
 def events_before(request):
     """Return events with date < before. Query: before=YYYY-MM-DD."""
@@ -1063,19 +1074,10 @@ def events_before(request):
 
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@authentication_classes([])
+@permission_classes([AllowAny])
 def search_students(request):
-    """Search for students by name, email, or A-number - accessible to all admin users"""
-    from .models import AdminUser
-    
-    # Allow any admin user to search students (for check-in and other admin functions)
-    admin_profile = getattr(request.user, 'adminuser', None)
-    if not admin_profile:
-        return Response(
-            {'error': 'You do not have permission to search students'},
-            status=status.HTTP_403_FORBIDDEN
-        )
-    
+    """Search for students by name, email, or A-number."""
     query = request.GET.get('q', '').strip()
     
     if not query or len(query) < 2:
@@ -1115,6 +1117,7 @@ def search_students(request):
     return Response(students_data)
 
 @api_view(['GET', 'POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 def list_organizations(request):
     """List all organizations or create a new one. No permission check."""
@@ -1153,7 +1156,22 @@ def list_organizations(request):
             'updated_at': organization.updated_at
         }, status=status.HTTP_201_CREATED)
 
+def update_events_organization_name(old_name, new_name):
+    """
+    When an organization is renamed, update all events that reference the old name.
+    Event.organization (and event_type when it matched) are CharFields storing the name.
+    EventOrganization uses FK to Organization, so those stay correct after Organization.name is saved.
+    """
+    if not old_name or not new_name or old_name == new_name:
+        return 0
+    updated = Event.objects.filter(organization=old_name).update(organization=new_name)
+    # Keep event_type in sync when it was the same as the org name
+    Event.objects.filter(event_type=old_name).update(event_type=new_name)
+    return updated
+
+
 @api_view(['PUT', 'PATCH', 'DELETE'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 def manage_organization(request, organization_id):
     """Update or delete an organization. No permission check."""
@@ -1182,8 +1200,11 @@ def manage_organization(request, organization_id):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        old_name = organization.name
         organization.name = name
         organization.save()
+        # Cascade the name change to all events that use this organization (primary name)
+        update_events_organization_name(old_name, name)
         
         return Response({
             'id': organization.id,
@@ -1206,9 +1227,10 @@ def manage_organization(request, organization_id):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 def attendance_overview(request):
-    # Check if user is admin and filter by organization
+    # Optional organization filter via query param or admin role
     # Super Admin, DAISSA, and Faculty can see all events
     admin_profile = getattr(request.user, 'adminuser', None)
     

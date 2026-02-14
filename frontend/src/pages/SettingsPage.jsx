@@ -37,6 +37,7 @@ function SettingsPage() {
   const [deletingAllStudents, setDeletingAllStudents] = useState(false)
   const [deletingAllEvents, setDeletingAllEvents] = useState(false)
   const [deletingEventId, setDeletingEventId] = useState(null)
+  const [deletingStudentId, setDeletingStudentId] = useState(null)
   const { toast } = useToast()
   const { user } = useAuth()
 
@@ -95,6 +96,7 @@ function SettingsPage() {
   const handleDeleteAllStaleStudents = async () => {
     if (staleStudents.length === 0) return
     if (!confirm(`Delete all ${staleStudents.length} listed students and their accounts? This cannot be undone.`)) return
+    const scrollY = window.scrollY
     setDeletingAllStudents(true)
     let done = 0
     for (const s of staleStudents) {
@@ -111,7 +113,8 @@ function SettingsPage() {
     }
     if (done > 0) {
       toast({ title: "Deleted", description: `${done} student(s) deleted.` })
-      fetchStaleStudents()
+      await fetchStaleStudents()
+      requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, scrollY)))
     }
     setDeletingAllStudents(false)
   }
@@ -119,6 +122,7 @@ function SettingsPage() {
   const handleDeleteAllOldEvents = async () => {
     if (oldEvents.length === 0) return
     if (!confirm(`Delete all ${oldEvents.length} listed events and their attendances? This cannot be undone.`)) return
+    const scrollY = window.scrollY
     setDeletingAllEvents(true)
     let done = 0
     for (const e of oldEvents) {
@@ -135,19 +139,44 @@ function SettingsPage() {
     }
     if (done > 0) {
       toast({ title: "Deleted", description: `${done} event(s) deleted.` })
-      fetchOldEvents()
+      await fetchOldEvents()
+      requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, scrollY)))
     }
     setDeletingAllEvents(false)
+  }
+
+  const handleDeleteOneStudent = async (student) => {
+    if (!student?.id) return
+    const name = [student.first_name, student.last_name].filter(Boolean).join(" ") || "Student"
+    if (!confirm(`Delete ${name} and their account? This cannot be undone.`)) return
+    const scrollY = window.scrollY
+    setDeletingStudentId(student.id)
+    try {
+      await axios.delete(`${API_URL}/api/students/${student.id}/`, authHeaders)
+      toast({ title: "Deleted", description: "Student deleted." })
+      await fetchStaleStudents()
+      requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, scrollY)))
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: err.response?.data?.error || err.message,
+        variant: "destructive",
+      })
+    } finally {
+      setDeletingStudentId(null)
+    }
   }
 
   const handleDeleteOneEvent = async (event) => {
     if (!event?.id) return
     if (!confirm(`Delete "${event.name}" (${event.date ? new Date(event.date).toLocaleDateString() : "—"})? Attendances will be removed.`)) return
+    const scrollY = window.scrollY
     setDeletingEventId(event.id)
     try {
       await axios.delete(`${API_URL}/api/events/${event.id}/`, authHeaders)
       toast({ title: "Deleted", description: "Event deleted." })
-      fetchOldEvents()
+      await fetchOldEvents()
+      requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, scrollY)))
     } catch (err) {
       toast({
         title: "Error",
@@ -199,6 +228,7 @@ function SettingsPage() {
                     <TableRow>
                       <TableHead>Name</TableHead>
                       <TableHead>A-Number</TableHead>
+                      <TableHead className="w-[80px] text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -206,6 +236,16 @@ function SettingsPage() {
                       <TableRow key={s.id}>
                         <TableCell>{s.first_name} {s.last_name}</TableCell>
                         <TableCell>{aNumber(s)}</TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            disabled={deletingStudentId === s.id || deletingAllStudents}
+                            onClick={() => handleDeleteOneStudent(s)}
+                          >
+                            {deletingStudentId === s.id ? "Deleting…" : "Delete"}
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

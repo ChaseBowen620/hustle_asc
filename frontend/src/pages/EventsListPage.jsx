@@ -127,16 +127,14 @@ function EventsListPage() {
 
   const fetchManageOrganizations = useCallback(async () => {
     try {
-      const res = await axios.get(`${API_URL}/api/organizations/`, authHeaders)
+      // GET is AllowAny on backend; call without auth to avoid 401 from invalid token
+      const res = await axios.get(`${API_URL}/api/organizations/`)
       setManageOrgsList(Array.isArray(res.data) ? res.data : [])
     } catch (err) {
-      const status = err.response?.status
-      const msg = status === 401
-        ? 'Please log in to manage organizations.'
-        : (err.response?.data?.error || 'Failed to load organizations')
+      const msg = err.response?.data?.error || 'Failed to load organizations'
       toast({ title: 'Error', description: msg, variant: 'destructive' })
     }
-  }, [user?.token, toast])
+  }, [toast])
 
   const fetchEventsOrgs = useCallback(async () => {
     try {
@@ -154,7 +152,7 @@ function EventsListPage() {
     }
     setIsCreatingOrg(true)
     try {
-      await axios.post(`${API_URL}/api/organizations/`, { name: newOrgName.trim() }, authHeaders)
+      await axios.post(`${API_URL}/api/organizations/`, { name: newOrgName.trim() })
       toast({ title: 'Success', description: 'Organization created successfully' })
       setNewOrgName('')
       await fetchManageOrganizations()
@@ -165,7 +163,7 @@ function EventsListPage() {
     } finally {
       setIsCreatingOrg(false)
     }
-  }, [newOrgName, authHeaders, fetchManageOrganizations, fetchEventsOrgs, toast])
+  }, [newOrgName, fetchManageOrganizations, fetchEventsOrgs, toast])
 
   const handleUpdateOrganization = useCallback(async (orgId, name) => {
     if (!name?.trim()) {
@@ -173,7 +171,7 @@ function EventsListPage() {
       return
     }
     try {
-      await axios.patch(`${API_URL}/api/organizations/${orgId}/`, { name: name.trim() }, authHeaders)
+      await axios.patch(`${API_URL}/api/organizations/${orgId}/`, { name: name.trim() })
       toast({ title: 'Success', description: 'Organization updated successfully' })
       setEditingOrgId(null)
       setEditingOrgName('')
@@ -183,12 +181,12 @@ function EventsListPage() {
       const msg = err.response?.data?.error || 'Failed to update organization'
       toast({ title: 'Error', description: msg, variant: 'destructive' })
     }
-  }, [authHeaders, fetchManageOrganizations, fetchEventsOrgs, toast])
+  }, [fetchManageOrganizations, fetchEventsOrgs, toast])
 
   const handleDeleteOrganization = useCallback(async (orgId) => {
     if (!window.confirm('Are you sure you want to delete this organization?')) return
     try {
-      await axios.delete(`${API_URL}/api/organizations/${orgId}/`, authHeaders)
+      await axios.delete(`${API_URL}/api/organizations/${orgId}/`)
       toast({ title: 'Success', description: 'Organization deleted successfully' })
       await fetchManageOrganizations()
       await fetchEventsOrgs()
@@ -196,7 +194,7 @@ function EventsListPage() {
       const msg = err.response?.data?.error || 'Failed to delete organization'
       toast({ title: 'Error', description: msg, variant: 'destructive' })
     }
-  }, [authHeaders, fetchManageOrganizations, fetchEventsOrgs, toast])
+  }, [fetchManageOrganizations, fetchEventsOrgs, toast])
 
   useEffect(() => {
     fetchEvents(true)

@@ -1,5 +1,4 @@
 import { create } from 'zustand'
-import { API_URL } from '@/config/api'
 
 const useAuth = create((set) => {
   const storedUser = localStorage.getItem('user')
@@ -14,27 +13,26 @@ const useAuth = create((set) => {
     user,
 
     login: async (username, password) => {
-      const res = await fetch(`${API_URL}/api/token/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.detail || err.message || 'Invalid credentials')
+      // Hardcoded credentials
+      const HARDCODED_USERNAME = 'ascslb@usu.edu'
+      const HARDCODED_PASSWORD = 'HelpUniteShareTeachLeadEngage'
+      
+      if (username !== HARDCODED_USERNAME || password !== HARDCODED_PASSWORD) {
+        throw new Error('Invalid credentials')
       }
-      const data = await res.json()
+      
+      // Create user data object for authenticated user
       const userData = {
-        username: data.username ?? username,
-        token: data.access,
-        refresh: data.refresh,
+        username: HARDCODED_USERNAME,
+        token: 'hardcoded-auth-token',
+        refresh: 'hardcoded-refresh-token',
         isAuthenticated: true,
-        is_admin: data.is_admin ?? false,
-        first_name: data.first_name,
-        last_name: data.last_name,
-        student_id: data.student_id,
-        student_profile: data.student_profile,
-        admin_profile: data.admin_profile,
+        is_admin: true,
+        first_name: 'Admin',
+        last_name: 'User',
+        student_id: null,
+        student_profile: null,
+        admin_profile: null,
       }
       localStorage.setItem('user', JSON.stringify(userData))
       set({ user: userData })
@@ -46,9 +44,8 @@ const useAuth = create((set) => {
       set({ user: null })
     },
 
-    isAdmin: (user) => {
-      return user && (user.is_admin === true || user.isAuthenticated === true)
-    },
+    // Any logged-in user has full access; the only gate is /login
+    isAdmin: (user) => !!user,
   }
 })
 

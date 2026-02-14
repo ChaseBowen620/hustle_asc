@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # Restart backend and frontend: kill processes on their ports, then start both.
 # Backend: port 8000. Frontend: port 3000 (Vite).
+#
+# Why you "see" the app only when running this script:
+# This script is what starts the servers. Without it, nothing is listening on
+# 8000 or 3000. To run manually: in one terminal run "cd backend && python manage.py runserver 8000",
+# in another run "cd frontend && npm run dev", then open http://localhost:3000 (or 8000 for API).
 
 set -e
 ROOT="$(cd "$(dirname "$0")" && pwd)"
