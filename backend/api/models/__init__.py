@@ -8,6 +8,7 @@ from .teaching_assistant import TeachingAssistant
 from .admin import AdminUser
 from .event_organization import EventOrganization
 from .organization import Organization
+from .pending_checkin import PendingCheckIn
 
 __all__ = [
     'Student',
@@ -19,7 +20,8 @@ __all__ = [
     'TeachingAssistant',
     'AdminUser',
     'EventOrganization',
-    'Organization'
+    'Organization',
+    'PendingCheckIn',
 ]
 
 # Hello!

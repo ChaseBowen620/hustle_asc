@@ -69,27 +69,39 @@ function QRCodeGenerator({ event, baseUrl = "https://hustledashboard.com", isGen
     }
   }
 
-  const downloadQRCode = () => {
-    const qrCodeUrl = generateQRCode()
-    const link = document.createElement('a')
-    link.href = qrCodeUrl
+  const downloadQRCode = async () => {
+    const qrCodeApiUrl = generateQRCode()
     let filename
     if (organization) {
       filename = `${organization.toLowerCase().replace(/\s+/g, '_')}_checkin_qr.png`
     } else if (isGeneral) {
       filename = 'general_checkin_qr.png'
     } else {
-      filename = `${event.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_checkin_qr.png`
+      filename = `${event?.name?.replace(/[^a-z0-9]/gi, '_').toLowerCase() ?? 'event'}_checkin_qr.png`
     }
-    link.download = filename
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    
-    toast({
-      title: "Downloaded!",
-      description: "QR code image downloaded",
-    })
+    try {
+      const res = await fetch(qrCodeApiUrl)
+      if (!res.ok) throw new Error('Failed to load QR image')
+      const blob = await res.blob()
+      const blobUrl = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = blobUrl
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(blobUrl)
+      toast({
+        title: "Downloaded!",
+        description: "QR code image downloaded",
+      })
+    } catch (err) {
+      toast({
+        title: "Download failed",
+        description: err?.message ?? "Could not download QR code image",
+        variant: "destructive",
+      })
+    }
   }
 
   if (!event && !isGeneral && !organization) return null
@@ -102,7 +114,7 @@ function QRCodeGenerator({ event, baseUrl = "https://hustledashboard.com", isGen
         variant="outline"
       >
         <QrCode className="h-4 w-4" />
-        Generate QR Code
+        Show QR Code
       </Button>
 
       <Dialog open={isOpen} onOpenChange={setIsOpen}>

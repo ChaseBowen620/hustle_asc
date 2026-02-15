@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import User
-from .models import Student, Event, Attendance, Semester, Professor, Class, TeachingAssistant, AdminUser, EventOrganization, Organization
+from .models import Student, Event, Attendance, Semester, Professor, Class, TeachingAssistant, AdminUser, EventOrganization, Organization, PendingCheckIn
 
 @admin.register(Student)
 class StudentAdmin(admin.ModelAdmin):
@@ -70,6 +70,12 @@ class OrganizationAdmin(admin.ModelAdmin):
     list_filter = ('created_at',)
     search_fields = ('id', 'name')
     list_editable = ('name',)
+
+@admin.register(PendingCheckIn)
+class PendingCheckInAdmin(admin.ModelAdmin):
+    list_display = ('temp_id', 'student', 'event', 'a_number', 'created_at')
+    list_filter = ('event', 'created_at')
+    search_fields = ('temp_id', 'a_number', 'first_name', 'last_name')
 
 # Custom User Admin to show email field prominently
 class UserAdmin(BaseUserAdmin):

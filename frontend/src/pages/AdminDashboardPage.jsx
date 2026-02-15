@@ -844,9 +844,7 @@ function AdminDashboardPage() {
                     <p className="text-sm text-gray-500">No attendance data available for this student.</p>
                   )}
                 </div>
-              ) : (
-                <p className="text-sm text-gray-500">Click a student in the Attendance Ranking tab to view their metrics here.</p>
-              )}
+              ) : null}
             </CardContent>
           </Card>
         </TabsContent>

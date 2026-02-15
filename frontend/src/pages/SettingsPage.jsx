@@ -18,12 +18,12 @@ function getPastAcademicYearRange() {
   const now = new Date()
   const y = now.getFullYear()
   const month = now.getMonth() + 1 // 1–12
-  // Start of current academic year (Sept–Aug): e.g. 2025-09-01 until 2026-08-31, then 2026-09-01
-  const sinceYear = month >= 9 ? y : y - 1
-  const staleSince = `${sinceYear}-09-01`
+  // Start of current academic year (Aug–Jul): e.g. 2025-08-01 until 2026-07-31, then 2026-08-01
+  const sinceYear = month >= 8 ? y : y - 1
+  const staleSince = `${sinceYear}-08-01`
   const today = now.toISOString().slice(0, 10) // YYYY-MM-DD
   return {
-    before: `${y - 1}-09-01`, // for old events (unchanged)
+    before: `${y - 1}-08-01`, // for old events
     staleSince,
     staleEnd: today, // students with no attendance in [staleSince, today] = haven't attended since staleSince
   }
@@ -195,7 +195,6 @@ function SettingsPage() {
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold">Settings</h1>
-          <p className="text-slate-600">Account and event deletion only.</p>
         </div>
 
         <Card>
@@ -204,7 +203,7 @@ function SettingsPage() {
               <div>
                 <CardTitle>Students with no attendance since {range.staleSince}</CardTitle>
                 <CardDescription>
-                  Marked within the past academic year.
+                  Marked outside the current academic year
                 </CardDescription>
               </div>
               {staleStudents.length > 0 && (
@@ -262,9 +261,9 @@ function SettingsPage() {
           <CardHeader>
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <CardTitle>Events past the past academic year</CardTitle>
+                <CardTitle>Events before {range.before}</CardTitle>
                 <CardDescription>
-                  Events before {range.before}. Delete old events (attendances will cascade).
+                  Marked outside the current academic year
                 </CardDescription>
               </div>
               {oldEvents.length > 0 && (

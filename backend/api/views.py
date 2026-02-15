@@ -6,7 +6,7 @@ from rest_framework.decorators import action, api_view, authentication_classes, 
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 from django.utils import timezone
-from .models import Student, Event, Attendance, Semester, Professor, Class, TeachingAssistant
+from .models import Student, Event, Attendance, Semester, Professor, Class, TeachingAssistant, PendingCheckIn
 from .serializers import (
     StudentSerializer, 
     EventSerializer, 
@@ -1030,14 +1030,14 @@ def delete_admin_user(request, admin_user_id):
 @authentication_classes([])  # avoid 401 on invalid/expired JWT; this endpoint is AllowAny
 @permission_classes([AllowAny])
 def no_attendance_in_period(request):
-    """Return students with zero attendances where event.date is in [start, end]. Query: start=YYYY-MM-DD&end=YYYY-MM-DD or academic_year=YYYY (past year Sept 1–April 30)."""
+    """Return students with zero attendances where event.date is in [start, end]. Query: start=YYYY-MM-DD&end=YYYY-MM-DD or academic_year=YYYY (past year Aug 1–April 30)."""
     start_param = request.GET.get('start')
     end_param = request.GET.get('end')
     academic_year = request.GET.get('academic_year')
     if academic_year:
         try:
             y = int(academic_year)
-            start_param = f'{y - 1}-09-01'
+            start_param = f'{y - 1}-08-01'
             end_param = f'{y}-04-30'
         except ValueError:
             return Response({'error': 'academic_year must be a year (e.g. 2024)'}, status=status.HTTP_400_BAD_REQUEST)
@@ -1071,6 +1071,140 @@ def events_before(request):
     events = Event.objects.filter(date__lt=before).order_by('-date')
     serializer = EventSerializer(events, many=True)
     return Response(serializer.data)
+
+
+def _get_or_create_student_by_a_number(first_name, last_name, a_number):
+    """Return (student, created). If user exists with a_number, return that student; else create user+student."""
+    a_number = (a_number or '').lower().strip()
+    if not a_number:
+        return None, False
+    user = User.objects.filter(username=a_number).first()
+    if user:
+        try:
+            student = Student.objects.get(user=user)
+            return student, False
+        except Student.DoesNotExist:
+            pass
+    user = User.objects.create(
+        username=a_number,
+        first_name=first_name or '',
+        last_name=last_name or '',
+    )
+    user.set_unusable_password()
+    user.save()
+    student_group, _ = Group.objects.get_or_create(name='Students')
+    user.groups.add(student_group)
+    try:
+        student = Student.objects.get(user=user)
+        return student, True
+    except Student.DoesNotExist:
+        return None, False
+
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def add_pending_checkin(request):
+    """Add one pending check-in (from scan or check-in page). Body: temp_id, event_id, event_date (optional); and either student_id OR first_name, last_name, a_number."""
+    temp_id = request.data.get('temp_id')
+    event_id = request.data.get('event_id')
+    event_date = request.data.get('event_date', '')
+    if not temp_id or not event_id:
+        return Response({'error': 'temp_id and event_id are required'}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        event = Event.objects.get(id=event_id)
+    except Event.DoesNotExist:
+        return Response({'error': f'Event {event_id} does not exist'}, status=status.HTTP_404_NOT_FOUND)
+    student_id = request.data.get('student_id')
+    if student_id is not None:
+        try:
+            student = Student.objects.get(id=student_id)
+        except Student.DoesNotExist:
+            return Response({'error': f'Student {student_id} does not exist'}, status=status.HTTP_404_NOT_FOUND)
+        PendingCheckIn.objects.update_or_create(
+            temp_id=temp_id,
+            defaults={
+                'student': student,
+                'event': event,
+                'event_date': event_date,
+                'first_name': '',
+                'last_name': '',
+                'a_number': '',
+            },
+        )
+    else:
+        first_name = request.data.get('first_name', '')
+        last_name = request.data.get('last_name', '')
+        a_number = (request.data.get('a_number') or '').strip()
+        if not a_number:
+            return Response({'error': 'student_id or (first_name, last_name, a_number) required'}, status=status.HTTP_400_BAD_REQUEST)
+        PendingCheckIn.objects.update_or_create(
+            temp_id=temp_id,
+            defaults={
+                'student': None,
+                'event': event,
+                'event_date': event_date,
+                'first_name': first_name,
+                'last_name': last_name,
+                'a_number': a_number,
+            },
+        )
+    return Response({'ok': True, 'temp_id': temp_id}, status=status.HTTP_201_CREATED)
+
+
+@api_view(['DELETE'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def remove_pending_checkin(request, temp_id):
+    """Remove one pending check-in by temp_id."""
+    deleted, _ = PendingCheckIn.objects.filter(temp_id=temp_id).delete()
+    if not deleted:
+        return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def flush_pending_checkins(request):
+    """Process all pending check-ins: create students where needed, create attendances, then delete pending. Used by Refresh Attendances button."""
+    pending = list(PendingCheckIn.objects.select_related('student', 'event').order_by('event_id', 'created_at'))
+    if not pending:
+        return Response({'flushed': 0, 'attendances': 0, 'students_created': 0})
+
+    # Group by event (like client flush)
+    by_event = {}
+    for p in pending:
+        by_event.setdefault(p.event_id, []).append(p)
+
+    students_created = 0
+    attendances_created = 0
+
+    for event_id, items in by_event.items():
+        event = items[0].event
+        for p in items:
+            if p.student_id:
+                student_id = p.student_id
+            else:
+                student, created = _get_or_create_student_by_a_number(p.first_name, p.last_name, p.a_number)
+                if not student:
+                    continue
+                if created:
+                    students_created += 1
+                student_id = student.id
+            if Attendance.objects.filter(student_id=student_id, event_id=event_id).exists():
+                pass
+            else:
+                Attendance.objects.create(student_id=student_id, event_id=event_id)
+                attendances_created += 1
+            get_or_create_next_occurrence(event)
+
+    PendingCheckIn.objects.all().delete()
+    return Response({
+        'flushed': len(pending),
+        'attendances': attendances_created,
+        'students_created': students_created,
+    }, status=status.HTTP_200_OK)
 
 
 @api_view(['GET'])

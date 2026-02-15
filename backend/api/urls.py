@@ -22,7 +22,10 @@ from .views import (
     no_attendance_in_period,
     events_before,
     list_organizations,
-    manage_organization
+    manage_organization,
+    add_pending_checkin,
+    remove_pending_checkin,
+    flush_pending_checkins,
 )
 from .debug_webhook_views import debug_webhook, debug_webhook_status
 from .onetap_webhook_handler import onetap_webhook_handler, onetap_webhook_status
@@ -44,6 +47,9 @@ urlpatterns = [
     path('students/points/', student_points, name='student-points'),
     path('events/before/', events_before, name='events-before'),
     path('attendance/overview/', attendance_overview, name='attendance-overview'),
+    path('attendance/pending/', add_pending_checkin, name='add-pending-checkin'),
+    path('attendance/pending/<str:temp_id>/', remove_pending_checkin, name='remove-pending-checkin'),
+    path('attendance/flush-pending/', flush_pending_checkins, name='flush-pending-checkins'),
     path('user/me/', get_user_details, name='user-details'),
     path('user/change-password/', change_password, name='change-password'),
     path('admin-users/', list_admin_users, name='list-admin-users'),

@@ -29,8 +29,10 @@ import {
   getQueue,
   addPendingAttendance,
   addPendingStudent,
-  runFlushDue,
+  runFlushAll,
   removePendingAttendanceByTempId,
+  addPendingCheckInToServer,
+  removePendingCheckInFromServer,
 } from "@/utils/checkInQueue"
 
 function CheckInPage() {
@@ -98,12 +100,12 @@ function CheckInPage() {
 
   useEffect(() => {
     const id = setInterval(() => {
-      runFlushDue(API_URL, (eventId, err) => {
+      runFlushAll(API_URL, (eventId, err) => {
         console.error("Flush error for event", eventId, err)
         toast({ title: "Flush error", description: String(err?.message), variant: "destructive" })
       })
       setQueueVersion((v) => v + 1)
-    }, 60000)
+    }, 15000)
     return () => clearInterval(id)
   }, [toast])
 
@@ -112,13 +114,24 @@ function CheckInPage() {
   }, [fetchStudents])
 
   const handleCheckIn = useCallback(
-    (student) => {
+    async (student) => {
       if (!selectedEvent) return
-      addPendingAttendance({
+      const tempId = addPendingAttendance({
         studentId: student.id,
         eventId: selectedEvent.id,
         eventDate: selectedEvent.date,
       })
+      try {
+        await addPendingCheckInToServer(API_URL, {
+          temp_id: tempId,
+          student_id: student.id,
+          event_id: selectedEvent.id,
+          event_date: selectedEvent.date || "",
+        })
+      } catch (e) {
+        console.error("Server sync failed:", e)
+        toast({ title: "Synced locally", description: "Refresh Attendances will sync when online.", variant: "default" })
+      }
       toast({
         title: "Checked in",
         description: `${student.first_name} ${student.last_name} has been checked in (pending sync).`,
@@ -130,18 +143,31 @@ function CheckInPage() {
   )
 
   const handleNewUserAndCheckIn = useCallback(
-    (data) => {
+    async (data) => {
       if (!selectedEvent) return
       const studentTempId = addPendingStudent({
         first_name: data.first_name,
         last_name: data.last_name,
         a_number: data.a_number,
       })
-      addPendingAttendance({
+      const tempId = addPendingAttendance({
         studentId: studentTempId,
         eventId: selectedEvent.id,
         eventDate: selectedEvent.date,
       })
+      try {
+        await addPendingCheckInToServer(API_URL, {
+          temp_id: tempId,
+          event_id: selectedEvent.id,
+          event_date: selectedEvent.date || "",
+          first_name: data.first_name,
+          last_name: data.last_name,
+          a_number: data.a_number,
+        })
+      } catch (e) {
+        console.error("Server sync failed:", e)
+        toast({ title: "Synced locally", description: "Refresh Attendances will sync when online.", variant: "default" })
+      }
       toast({
         title: "Checked in",
         description: `${data.first_name} ${data.last_name} has been added and checked in (pending sync).`,
@@ -171,8 +197,13 @@ function CheckInPage() {
     [user?.token, fetchAttendances, toast]
   )
 
-  const handleRemovePendingAttendance = useCallback((tempId) => {
+  const handleRemovePendingAttendance = useCallback(async (tempId) => {
     removePendingAttendanceByTempId(tempId)
+    try {
+      await removePendingCheckInFromServer(API_URL, tempId)
+    } catch (e) {
+      console.error("Server remove failed:", e)
+    }
     setQueueVersion((v) => v + 1)
     toast({ title: "Removed", description: "Student removed from check-in (pending sync)." })
   }, [])

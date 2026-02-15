@@ -10,7 +10,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Search, Edit2, Check, X, Trash2, Download, Loader2 } from "lucide-react"
+import { Search, Edit2, Check, X, Trash2, Download, Loader2, RefreshCw } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import {
@@ -33,6 +33,7 @@ import { Label } from "@/components/ui/label"
 import { API_URL } from '@/config/api'
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/hooks/useAuth"
+import { runFlushAll, flushPendingCheckInsOnServer, clearQueue } from "@/utils/checkInQueue"
 
 const PAGE_SIZE = 10
 
@@ -64,6 +65,49 @@ function EventsListPage() {
   const [isCreatingOrg, setIsCreatingOrg] = useState(false)
   const [editingOrgId, setEditingOrgId] = useState(null)
   const [editingOrgName, setEditingOrgName] = useState("")
+  const [refreshingAttendances, setRefreshingAttendances] = useState(false)
+
+  const handleRefreshAttendances = useCallback(async () => {
+    setRefreshingAttendances(true)
+    try {
+      // Flush server-side queue (includes check-ins from /scan on any device)
+      const result = await flushPendingCheckInsOnServer(API_URL)
+      clearQueue()
+      const { flushed = 0, attendances: attCount = 0, students_created = 0 } = result
+      if (flushed > 0) {
+        toast({
+          title: "Refresh complete",
+          description: `Synced ${attCount} attendance(s) to the system${students_created ? ` (${students_created} new account(s)).` : "."}`,
+        })
+      } else {
+        // Also flush any local-only pending (e.g. from this device before server sync)
+        let hadError = false
+        await runFlushAll(API_URL, (eventId, err) => {
+          hadError = true
+          toast({
+            title: "Flush error",
+            description: `Event ${eventId}: ${err?.message || err}`,
+            variant: "destructive",
+          })
+        })
+        clearQueue()
+        if (!hadError) {
+          toast({
+            title: "Refresh complete",
+            description: "Pending attendances and account creations have been synced to the system.",
+          })
+        }
+      }
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: err?.message || "Failed to refresh attendances.",
+        variant: "destructive",
+      })
+    } finally {
+      setRefreshingAttendances(false)
+    }
+  }, [toast])
 
   const fetchEvents = useCallback(async (reset = true) => {
     if (reset) {
@@ -855,9 +899,23 @@ function EventsListPage() {
             className="min-w-[280px] max-w-md"
           />
         </div>
-        <Button onClick={() => setShowEditOrganizationsDialog(true)}>
-          Edit Organizations
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={handleRefreshAttendances}
+            disabled={refreshingAttendances}
+          >
+            {refreshingAttendances ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4 mr-1.5" />
+            )}
+            Refresh Attendances
+          </Button>
+          <Button onClick={() => setShowEditOrganizationsDialog(true)}>
+            Edit Organizations
+          </Button>
+        </div>
       </div>
 
           <div className="border rounded-lg">

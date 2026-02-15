@@ -31,6 +31,11 @@ function setQueue(data) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
 }
 
+/** Clear the local queue (e.g. after server flush). */
+export function clearQueue() {
+  setQueue(defaultStore())
+}
+
 export function addPendingAttendance({ studentId, eventId, eventDate, tempId }) {
   const store = getQueue()
   store.attendances.push({ studentId, eventId, eventDate, tempId: tempId || `att-${Date.now()}-${Math.random().toString(36).slice(2)}` })
@@ -174,6 +179,16 @@ export async function flushEvent(eventId, apiUrl, registerPayload = {}) {
 }
 
 /**
+ * Get all unique event IDs that have pending attendances (regardless of due time).
+ */
+export function getAllEventIdsWithPending() {
+  const store = getQueue()
+  const ids = new Set()
+  store.attendances.forEach((a) => ids.add(Number(a.eventId)))
+  return Array.from(ids)
+}
+
+/**
  * Run flush for all events that are due. Call periodically (e.g. every minute).
  */
 export async function runFlushDue(apiUrl, onFlushError) {
@@ -185,4 +200,62 @@ export async function runFlushDue(apiUrl, onFlushError) {
       onFlushError && onFlushError(eventId, err)
     }
   }
+}
+
+/**
+ * Flush all pending account creations and attendances to the system (all events with pending data).
+ */
+export async function runFlushAll(apiUrl, onFlushError) {
+  const eventIds = getAllEventIdsWithPending()
+  for (const eventId of eventIds) {
+    try {
+      await flushEvent(eventId, apiUrl)
+    } catch (err) {
+      onFlushError && onFlushError(eventId, err)
+    }
+  }
+}
+
+/**
+ * Sync one pending check-in to the server (so Refresh Attendances works across devices e.g. scan on phone).
+ * Payload: { temp_id, event_id, event_date?, student_id? } or { temp_id, event_id, event_date?, first_name, last_name, a_number }.
+ */
+export async function addPendingCheckInToServer(apiUrl, payload) {
+  const res = await fetch(`${apiUrl}/api/attendance/pending/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.error || `Failed to sync pending (${res.status})`)
+  }
+}
+
+/**
+ * Remove one pending check-in from the server by temp_id.
+ */
+export async function removePendingCheckInFromServer(apiUrl, tempId) {
+  const res = await fetch(`${apiUrl}/api/attendance/pending/${encodeURIComponent(tempId)}/`, {
+    method: 'DELETE',
+  })
+  if (!res.ok && res.status !== 404) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.error || `Failed to remove pending (${res.status})`)
+  }
+}
+
+/**
+ * Flush all pending check-ins on the server (creates students and attendances). Returns { flushed, attendances, students_created }.
+ */
+export async function flushPendingCheckInsOnServer(apiUrl) {
+  const res = await fetch(`${apiUrl}/api/attendance/flush-pending/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.error || `Failed to flush pending (${res.status})`)
+  }
+  return res.json()
 }
