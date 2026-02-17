@@ -37,6 +37,241 @@ import { runFlushAll, flushPendingCheckInsOnServer, clearQueue } from "@/utils/c
 
 const PAGE_SIZE = 10
 
+// Extracted to module level to avoid "lexical declaration before initialization" (minifier TDZ) when defined inside parent
+function EventsTableInner({
+  events,
+  showAttendance,
+  editingField,
+  editValues,
+  setEditValues,
+  isSaving,
+  handleEditClick,
+  handleCancelEdit,
+  handleSaveEdit,
+  navigate,
+  handleDeleteEvent,
+  handleDownloadAttendanceCSV,
+  downloadingCsv,
+}) {
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Organization(s)</TableHead>
+          <TableHead>Name</TableHead>
+          <TableHead>Date</TableHead>
+          {showAttendance && <TableHead>Attendance</TableHead>}
+          <TableHead className="w-[100px]">Actions</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {events.map((ev) => {
+          const isEditingOrg = editingField?.eventId === ev.id && editingField?.field === 'organization'
+          const isEditingName = editingField?.eventId === ev.id && editingField?.field === 'name'
+          const isEditingDate = editingField?.eventId === ev.id && editingField?.field === 'date'
+          return (
+            <TableRow key={ev.id}>
+              <TableCell className="font-medium">
+                <div className="flex items-center gap-2">
+                  <span>
+                    {ev.organization}
+                    {(ev.event_organizations?.length ?? 0) > 0 && (
+                      <span className="text-muted-foreground">
+                        {" "}({(ev.event_organizations || []).map(eo => eo.organization_name ?? eo.organization?.name).filter(Boolean).join(", ")})
+                      </span>
+                    )}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleEditClick(ev, 'organization')}
+                    className="h-6 w-6 p-0"
+                    title="Edit Organization(s)"
+                  >
+                    <Edit2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              </TableCell>
+              <TableCell>
+                <div className="flex items-center gap-2">
+                  {isEditingName ? (
+                    <Input
+                      value={editValues.name}
+                      onChange={(e) => setEditValues({ ...editValues, name: e.target.value })}
+                      className="flex-1"
+                      disabled={isSaving}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          handleSaveEdit(ev.id, 'name')
+                        } else if (e.key === 'Escape') {
+                          handleCancelEdit()
+                        }
+                      }}
+                      autoFocus
+                    />
+                  ) : (
+                    <span className="flex-1">{ev.name}</span>
+                  )}
+                  {isEditingName ? (
+                    <div className="flex items-center gap-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleSaveEdit(ev.id, 'name')}
+                        disabled={isSaving}
+                        className="h-6 w-6 p-0"
+                        title="Save"
+                      >
+                        <Check className="h-3 w-3 text-green-600" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={handleCancelEdit}
+                        disabled={isSaving}
+                        className="h-6 w-6 p-0"
+                        title="Cancel"
+                      >
+                        <X className="h-3 w-3 text-red-600" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleEditClick(ev, 'name')}
+                      className="h-6 w-6 p-0"
+                      title="Edit Name"
+                    >
+                      <Edit2 className="h-3 w-3" />
+                    </Button>
+                  )}
+                </div>
+              </TableCell>
+              <TableCell>
+                <div className="flex items-center gap-2">
+                  {isEditingDate ? (
+                    <div className="flex gap-2 flex-1">
+                      <Input
+                        type="date"
+                        value={editValues.date.split('T')[0]}
+                        onChange={(e) => {
+                          const timePart = editValues.date.includes('T') ? editValues.date.split('T')[1] : '00:00'
+                          setEditValues({ ...editValues, date: `${e.target.value}T${timePart}` })
+                        }}
+                        className="flex-1"
+                        disabled={isSaving}
+                      />
+                      <Input
+                        type="time"
+                        value={editValues.date.includes('T') ? editValues.date.split('T')[1] : '00:00'}
+                        onChange={(e) => {
+                          const datePart = editValues.date.split('T')[0]
+                          setEditValues({ ...editValues, date: `${datePart}T${e.target.value}` })
+                        }}
+                        className="flex-1"
+                        disabled={isSaving}
+                      />
+                    </div>
+                  ) : (
+                    <>
+                      <span className="sm:hidden">
+                        {format(new Date(ev.date), 'MMM d, yyyy')}
+                      </span>
+                      <span className="hidden sm:inline">
+                        {format(new Date(ev.date), 'MMM d, yyyy h:mm a')}
+                      </span>
+                    </>
+                  )}
+                  {isEditingDate ? (
+                    <div className="flex items-center gap-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleSaveEdit(ev.id, 'date')}
+                        disabled={isSaving}
+                        className="h-6 w-6 p-0"
+                        title="Save"
+                      >
+                        <Check className="h-3 w-3 text-green-600" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={handleCancelEdit}
+                        disabled={isSaving}
+                        className="h-6 w-6 p-0"
+                        title="Cancel"
+                      >
+                        <X className="h-3 w-3 text-red-600" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleEditClick(ev, 'date')}
+                      className="h-6 w-6 p-0"
+                      title="Edit Date"
+                    >
+                      <Edit2 className="h-3 w-3" />
+                    </Button>
+                  )}
+                </div>
+              </TableCell>
+              {showAttendance && (
+                <TableCell>
+                  <button
+                    className={`${(ev.attendance_count ?? 0) > 0
+                      ? "bg-slate-50 hover:bg-slate-300 transition-colors px-3 py-1 rounded border"
+                      : "bg-slate-100 text-slate-400 cursor-not-allowed px-3 py-1 rounded border"
+                    }`}
+                    onClick={() => handleDownloadAttendanceCSV(ev)}
+                    disabled={(ev.attendance_count ?? 0) === 0 || downloadingCsv === ev.id}
+                    title="Download attendance CSV"
+                  >
+                    {downloadingCsv === ev.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin inline" />
+                    ) : (
+                      <>
+                        {ev.attendance_count ?? 0} <Download className="h-4 w-4 inline ml-1" />
+                      </>
+                    )}
+                  </button>
+                </TableCell>
+              )}
+              <TableCell>
+                <div className="flex items-center gap-1">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => navigate(`/events/${ev.id}/edit`)}
+                    disabled={isSaving || isEditingOrg || isEditingName || isEditingDate}
+                    className="h-8 w-8 p-0"
+                    title="Edit event / View who checked in"
+                  >
+                    <Edit2 className="h-4 w-4 text-slate-600" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleDeleteEvent(ev.id)}
+                    disabled={isSaving || isEditingOrg || isEditingName || isEditingDate}
+                    className="h-8 w-8 p-0"
+                    title="Delete Event"
+                  >
+                    <Trash2 className="h-4 w-4 text-red-600" />
+                  </Button>
+                </div>
+              </TableCell>
+            </TableRow>
+          )
+        })}
+      </TableBody>
+    </Table>
+  )
+}
+
 function EventsListPage() {
   const [events, setEvents] = useState([])
   const [organizations, setOrganizations] = useState([])
@@ -485,10 +720,10 @@ function EventsListPage() {
   }
 
   const filteredEvents = events
-    .filter(event => 
-      event.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      event.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      event.organization.toLowerCase().includes(searchTerm.toLowerCase())
+    .filter(ev => 
+      (ev.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (ev.location || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (ev.organization || '').toLowerCase().includes(searchTerm.toLowerCase())
     )
     .sort((a, b) => {
       const dateA = new Date(a.date)
@@ -496,224 +731,6 @@ function EventsListPage() {
       // Descending for past events (most recent first)
       return dateB - dateA
     })
-
-  const EventsTable = ({ events, showAttendance }) => (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Organization(s)</TableHead>
-          <TableHead>Name</TableHead>
-          <TableHead>Date</TableHead>
-          {showAttendance && <TableHead>Attendance</TableHead>}
-          <TableHead className="w-[100px]">Actions</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {events.map((event) => {
-          const isEditingOrg = editingField?.eventId === event.id && editingField?.field === 'organization'
-          const isEditingName = editingField?.eventId === event.id && editingField?.field === 'name'
-          const isEditingDate = editingField?.eventId === event.id && editingField?.field === 'date'
-          
-          return (
-          <TableRow key={event.id}>
-            <TableCell className="font-medium">
-              <div className="flex items-center gap-2">
-                <span>
-                  {event.organization}
-                  {(event.event_organizations?.length ?? 0) > 0 && (
-                    <span className="text-muted-foreground">
-                      {" "}({(event.event_organizations || []).map(eo => eo.organization_name ?? eo.organization?.name).filter(Boolean).join(", ")})
-                    </span>
-                  )}
-                </span>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => handleEditClick(event, 'organization')}
-                  className="h-6 w-6 p-0"
-                  title="Edit Organization(s)"
-                >
-                  <Edit2 className="h-3 w-3" />
-                </Button>
-              </div>
-            </TableCell>
-            <TableCell>
-              <div className="flex items-center gap-2">
-                {isEditingName ? (
-                  <Input
-                    value={editValues.name}
-                    onChange={(e) => setEditValues({ ...editValues, name: e.target.value })}
-                    className="flex-1"
-                    disabled={isSaving}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        handleSaveEdit(event.id, 'name')
-                      } else if (e.key === 'Escape') {
-                        handleCancelEdit()
-                      }
-                    }}
-                    autoFocus
-                  />
-                ) : (
-                  <span className="flex-1">{event.name}</span>
-                )}
-                {isEditingName ? (
-                  <div className="flex items-center gap-1">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => handleSaveEdit(event.id, 'name')}
-                      disabled={isSaving}
-                      className="h-6 w-6 p-0"
-                      title="Save"
-                    >
-                      <Check className="h-3 w-3 text-green-600" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={handleCancelEdit}
-                      disabled={isSaving}
-                      className="h-6 w-6 p-0"
-                      title="Cancel"
-                    >
-                      <X className="h-3 w-3 text-red-600" />
-                    </Button>
-                  </div>
-                ) : (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handleEditClick(event, 'name')}
-                    className="h-6 w-6 p-0"
-                    title="Edit Name"
-                  >
-                    <Edit2 className="h-3 w-3" />
-                  </Button>
-                )}
-              </div>
-            </TableCell>
-            <TableCell>
-              <div className="flex items-center gap-2">
-                {isEditingDate ? (
-                  <div className="flex gap-2 flex-1">
-                    <Input
-                      type="date"
-                      value={editValues.date.split('T')[0]}
-                      onChange={(e) => {
-                        const timePart = editValues.date.includes('T') ? editValues.date.split('T')[1] : '00:00'
-                        setEditValues({ ...editValues, date: `${e.target.value}T${timePart}` })
-                      }}
-                      className="flex-1"
-                      disabled={isSaving}
-                    />
-                    <Input
-                      type="time"
-                      value={editValues.date.includes('T') ? editValues.date.split('T')[1] : '00:00'}
-                      onChange={(e) => {
-                        const datePart = editValues.date.split('T')[0]
-                        setEditValues({ ...editValues, date: `${datePart}T${e.target.value}` })
-                      }}
-                      className="flex-1"
-                      disabled={isSaving}
-                    />
-                  </div>
-                ) : (
-                  <>
-                    <span className="sm:hidden">
-                      {format(new Date(event.date), 'MMM d, yyyy')}
-                    </span>
-                    <span className="hidden sm:inline">
-                      {format(new Date(event.date), 'MMM d, yyyy h:mm a')}
-                    </span>
-                  </>
-                )}
-                {isEditingDate ? (
-                  <div className="flex items-center gap-1">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => handleSaveEdit(event.id, 'date')}
-                      disabled={isSaving}
-                      className="h-6 w-6 p-0"
-                      title="Save"
-                    >
-                      <Check className="h-3 w-3 text-green-600" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={handleCancelEdit}
-                      disabled={isSaving}
-                      className="h-6 w-6 p-0"
-                      title="Cancel"
-                    >
-                      <X className="h-3 w-3 text-red-600" />
-                    </Button>
-                  </div>
-                ) : (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handleEditClick(event, 'date')}
-                    className="h-6 w-6 p-0"
-                    title="Edit Date"
-                  >
-                    <Edit2 className="h-3 w-3" />
-                  </Button>
-                )}
-              </div>
-            </TableCell>
-            {showAttendance && (
-              <TableCell>
-                <button
-                  className={`${(event.attendance_count ?? 0) > 0 
-                    ? "bg-slate-50 hover:bg-slate-300 transition-colors px-3 py-1 rounded border"
-                    : "bg-slate-100 text-slate-400 cursor-not-allowed px-3 py-1 rounded border"
-                  }`}
-                  onClick={() => handleDownloadAttendanceCSV(event)}
-                  disabled={(event.attendance_count ?? 0) === 0 || downloadingCsv === event.id}
-                  title="Download attendance CSV"
-                >
-                  {downloadingCsv === event.id ? (
-                    <Loader2 className="h-4 w-4 animate-spin inline" />
-                  ) : (
-                    <>
-                      {event.attendance_count ?? 0} <Download className="h-4 w-4 inline ml-1" />
-                    </>
-                  )}
-                </button>
-              </TableCell>
-            )}
-            <TableCell>
-              <div className="flex items-center gap-1">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => navigate(`/events/${event.id}/edit`)}
-                  disabled={isSaving || isEditingOrg || isEditingName || isEditingDate}
-                  className="h-8 w-8 p-0"
-                  title="Edit event / View who checked in"
-                >
-                  <Edit2 className="h-4 w-4 text-slate-600" />
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => handleDeleteEvent(event.id)}
-                  disabled={isSaving || isEditingOrg || isEditingName || isEditingDate}
-                  className="h-8 w-8 p-0"
-                  title="Delete Event"
-                >
-                  <Trash2 className="h-4 w-4 text-red-600" />
-                </Button>
-              </div>
-            </TableCell>
-          </TableRow>
-        )})}
-      </TableBody>
-    </Table>
-  )
 
   const orgDialogEventId = editingField?.field === 'organization' ? editingField.eventId : null
 
@@ -926,7 +943,21 @@ function EventsListPage() {
               </div>
             ) : (
               <>
-                <EventsTable events={filteredEvents} showAttendance={true} />
+                <EventsTableInner
+                  events={filteredEvents}
+                  showAttendance={true}
+                  editingField={editingField}
+                  editValues={editValues}
+                  setEditValues={setEditValues}
+                  isSaving={isSaving}
+                  handleEditClick={handleEditClick}
+                  handleCancelEdit={handleCancelEdit}
+                  handleSaveEdit={handleSaveEdit}
+                  navigate={navigate}
+                  handleDeleteEvent={handleDeleteEvent}
+                  handleDownloadAttendanceCSV={handleDownloadAttendanceCSV}
+                  downloadingCsv={downloadingCsv}
+                />
                 <div ref={loadMoreRef} className="min-h-[40px] flex items-center justify-center py-4">
                   {loadingMore && (
                     <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
