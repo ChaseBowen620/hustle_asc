@@ -32,8 +32,11 @@ function getPastAcademicYearRange() {
 function SettingsPage() {
   const [staleStudents, setStaleStudents] = useState([])
   const [oldEvents, setOldEvents] = useState([])
+  const [duplicateGroups, setDuplicateGroups] = useState([])
   const [loadingStale, setLoadingStale] = useState(false)
   const [loadingOld, setLoadingOld] = useState(false)
+  const [loadingDuplicates, setLoadingDuplicates] = useState(false)
+  const [mergingDuplicates, setMergingDuplicates] = useState(false)
   const [deletingAllStudents, setDeletingAllStudents] = useState(false)
   const [deletingAllEvents, setDeletingAllEvents] = useState(false)
   const [deletingEventId, setDeletingEventId] = useState(null)
@@ -83,6 +86,50 @@ function SettingsPage() {
     }
   }, [range.before, user?.token, toast])
 
+  const fetchDuplicates = useCallback(async () => {
+    setLoadingDuplicates(true)
+    try {
+      const res = await axios.get(`${API_URL}/api/students/duplicates/`)
+      setDuplicateGroups(Array.isArray(res.data?.groups) ? res.data.groups : [])
+    } catch (e) {
+      // Network or server error: show empty list so UI doesn't block; optional toast
+      setDuplicateGroups([])
+      const msg = e.response?.data?.error || e.message
+      if (e.response?.status >= 500) {
+        toast({
+          title: "Could not load duplicates",
+          description: msg || "Server error. You may have no duplicate accounts.",
+          variant: "destructive",
+        })
+      }
+    } finally {
+      setLoadingDuplicates(false)
+    }
+  }, [toast])
+
+  const handleMergeDuplicates = async () => {
+    if (duplicateGroups.length === 0) return
+    if (!confirm(`Merge ${duplicateGroups.length} duplicate group(s)? Duplicate accounts will be merged into one per person; attendances are combined with no duplicate events.`)) return
+    setMergingDuplicates(true)
+    try {
+      const res = await axios.post(`${API_URL}/api/students/merge-duplicates/`)
+      const { groups_processed = 0, accounts_merged = 0 } = res.data
+      toast({
+        title: "Merge complete",
+        description: `Processed ${groups_processed} group(s), merged ${accounts_merged} duplicate account(s).`,
+      })
+      await fetchDuplicates()
+    } catch (e) {
+      toast({
+        title: "Error",
+        description: e.response?.data?.error || e.message || "Failed to merge duplicates",
+        variant: "destructive",
+      })
+    } finally {
+      setMergingDuplicates(false)
+    }
+  }
+
   useEffect(() => {
     fetchStaleStudents()
   }, [fetchStaleStudents])
@@ -90,6 +137,10 @@ function SettingsPage() {
   useEffect(() => {
     fetchOldEvents()
   }, [fetchOldEvents])
+
+  useEffect(() => {
+    fetchDuplicates()
+  }, [fetchDuplicates])
 
   const authHeaders = user?.token ? { headers: { Authorization: `Bearer ${user.token}` } } : {}
 
@@ -196,6 +247,64 @@ function SettingsPage() {
         <div>
           <h1 className="text-3xl font-bold">Settings</h1>
         </div>
+
+        <Card>
+          <CardHeader>
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <CardTitle>Potential duplicate student accounts</CardTitle>
+                <CardDescription>
+                  Same A-number or same name across multiple accounts. Merging keeps one account per person and combines attendances (one per event).
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={loadingDuplicates || mergingDuplicates}
+                  onClick={() => fetchDuplicates()}
+                >
+                  {loadingDuplicates ? "Loading…" : "Refresh"}
+                </Button>
+                {duplicateGroups.length > 0 && (
+                  <Button
+                    disabled={loadingDuplicates || mergingDuplicates}
+                    onClick={handleMergeDuplicates}
+                  >
+                    {mergingDuplicates ? "Merging…" : "Merge duplicates"}
+                  </Button>
+                )}
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {loadingDuplicates ? (
+              <p className="text-slate-500">Loading…</p>
+            ) : duplicateGroups.length === 0 ? (
+              <p className="text-slate-500 py-4">No duplicate accounts found.</p>
+            ) : (
+              <div className="space-y-4">
+                {duplicateGroups.map((g, idx) => (
+                  <div key={`${g.type}-${g.key}-${idx}`} className="border rounded-md p-3 bg-slate-50/50 dark:bg-slate-900/30">
+                    <p className="font-medium text-sm text-slate-700 dark:text-slate-300">
+                      {g.type === "same_a_number" ? `Same A-number: ${g.key}` : `Same name: ${g.key}`}
+                    </p>
+                    <ul className="mt-2 space-y-1 text-sm text-slate-600 dark:text-slate-400">
+                      {g.students.map((s) => (
+                        <li key={s.id}>
+                          id={s.id} — {s.first_name} {s.last_name}
+                          {s.email ? ` · ${s.email}` : ""}
+                          {s.username ? ` · A-number ${s.username}` : ""}
+                          {" "}({s.attendance_count} attendance{s.attendance_count !== 1 ? "s" : ""})
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>

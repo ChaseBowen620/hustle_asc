@@ -1073,6 +1073,37 @@ def events_before(request):
     return Response(serializer.data)
 
 
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def student_duplicates(request):
+    """GET: return list of duplicate student groups (same A-number or same name) for Settings UI. Never 500s; returns empty list on error."""
+    try:
+        from api.duplicate_students import get_duplicate_groups
+        groups = get_duplicate_groups()
+        return Response({'groups': groups or []})
+    except Exception:
+        return Response({'groups': []})
+
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def student_merge_duplicates(request):
+    """POST: run merge of duplicate students. Returns { groups_processed, accounts_merged }."""
+    from api.duplicate_students import run_merge
+    log = []
+    try:
+        stats = run_merge(dry_run=False, log=log)
+        return Response({
+            'groups_processed': stats['groups_processed'],
+            'accounts_merged': stats['accounts_merged'],
+            'log': log,
+        })
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 def _get_or_create_student_by_a_number(first_name, last_name, a_number):
     """Return (student, created). If user exists with a_number, return that student; else create user+student."""
     a_number = (a_number or '').lower().strip()

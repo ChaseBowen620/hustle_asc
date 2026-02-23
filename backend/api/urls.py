@@ -21,6 +21,8 @@ from .views import (
     search_students,
     no_attendance_in_period,
     events_before,
+    student_duplicates,
+    student_merge_duplicates,
     list_organizations,
     manage_organization,
     add_pending_checkin,
@@ -42,6 +44,8 @@ router.register(r'teaching-assistants', TeachingAssistantViewSet)
 urlpatterns = [
     # Custom endpoints must come before router to avoid conflicts
     path('students/no-attendance-in-period/', no_attendance_in_period, name='no-attendance-in-period'),
+    path('students/duplicates/', student_duplicates, name='student-duplicates'),
+    path('students/merge-duplicates/', student_merge_duplicates, name='student-merge-duplicates'),
     path('students/total/', total_students, name='total-students'),
     path('students/participating/', participating_students, name='participating-students'),
     path('students/points/', student_points, name='student-points'),
