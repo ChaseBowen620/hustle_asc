@@ -1,6 +1,16 @@
 from django.shortcuts import render
 from django.http import HttpResponse
 
+
+def robots_txt(request):
+    """Serve robots.txt that disallows all crawlers; site contains personal information."""
+    lines = [
+        "# This site contains personal information. Crawling and indexing are not permitted.",
+        "User-agent: *",
+        "Disallow: /",
+    ]
+    return HttpResponse("\n".join(lines), content_type="text/plain")
+
 from rest_framework import viewsets, status
 from rest_framework.decorators import action, api_view, authentication_classes, permission_classes
 from rest_framework.response import Response

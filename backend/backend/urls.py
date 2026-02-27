@@ -16,9 +16,10 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
-from api.views import register_student, check_a_number
+from api.views import register_student, check_a_number, robots_txt
 
 urlpatterns = [
+    path('robots.txt', robots_txt),
     path('admin/', admin.site.urls),
     path('api/', include('api.urls')),
     path('api/register/', register_student, name='register-student'),
