@@ -91,7 +91,7 @@ function EventEditPage() {
   const studentsAvailableToAdd = students.filter((s) => !attendedStudentIds.has(s.id))
 
   const getStudentDisplayName = (s) =>
-    `${s.first_name || ""} ${s.last_name || ""} ${(s.user?.username || s.username || "").toUpperCase()}`.trim()
+    `${s.first_name || ""} ${s.last_name || ""} ${(s.a_number || "").toUpperCase()}`.trim()
 
   const addStudentSearchLower = (addStudentSearch || "").trim().toLowerCase()
   const addStudentSearchLongEnough = addStudentSearchLower.length >= ADD_STUDENT_SEARCH_MIN
@@ -189,7 +189,7 @@ function EventEditPage() {
                     >
                       <span className="font-medium truncate">{s.first_name} {s.last_name}</span>
                       <span className="text-slate-500 text-sm shrink-0 ml-2">
-                        {(s.user?.username || s.username || "").toUpperCase() || "—"}
+                        {(s.a_number || "").toUpperCase() || "—"}
                       </span>
                     </button>
                   ))
@@ -221,7 +221,7 @@ function EventEditPage() {
                       {att.student?.first_name} {att.student?.last_name}
                     </TableCell>
                     <TableCell className="text-slate-600">
-                      {(att.student?.user?.username || att.student?.username || "").toUpperCase() || "—"}
+                      {(att.student?.a_number || "").toUpperCase() || "—"}
                     </TableCell>
                     <TableCell>
                       <Button

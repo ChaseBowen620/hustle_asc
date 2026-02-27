@@ -20,15 +20,14 @@ import {
 import CreateUserForm from "./CreateUserForm"
 
 function getANumber(student) {
-  if (student.email && student.email.includes("@")) return student.email.split("@")[0].toUpperCase()
-  return (student.username || student.a_number || "").toUpperCase()
+  return (student.a_number || "").toUpperCase()
 }
 
 const MIN_SEARCH_LENGTH = 2
 
 const SEARCH_DROPDOWN_MAX = 8
 
-function CheckInStudents({ students, onCheckIn, attendances, selectedEvent, onUserCreated, useQueue, onNewUserAndCheckIn, onRemoveAttendance, onRemovePendingAttendance, scanMode, hideCheckedInList, hideStudentList }) {
+function CheckInStudents({ students, onCheckIn, attendances, selectedEvent, onUserCreated, onNewUserAndCheckIn, onRemoveAttendance, onRemovePendingAttendance, scanMode, hideCheckedInList, hideStudentList, checkingIn }) {
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedStudent, setSelectedStudent] = useState(null)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
@@ -48,13 +47,13 @@ function CheckInStudents({ students, onCheckIn, attendances, selectedEvent, onUs
   const availableStudents = students.filter((student) => {
     return !attendances.some(
       (attendance) =>
-        (attendance.student?.id === student.id || attendance.student?.id === student.username) &&
+        (attendance.student?.id === student.id || attendance.student?.id === student.a_number) &&
         Number(attendance.event) === Number(selectedEvent?.id)
     )
   })
 
   const filteredStudents = availableStudents.filter((student) =>
-    `${student.first_name || ""} ${student.last_name || ""} ${student.email || ""} ${student.username || ""}`.toLowerCase().includes(searchTerm.toLowerCase())
+    `${student.first_name || ""} ${student.last_name || ""} ${student.a_number || ""}`.toLowerCase().includes(searchTerm.toLowerCase())
   )
   const dropdownStudents = hideStudentList ? filteredStudents.slice(0, SEARCH_DROPDOWN_MAX) : []
 
@@ -205,7 +204,7 @@ function CheckInStudents({ students, onCheckIn, attendances, selectedEvent, onUs
         </div>
         <CreateUserForm
           onUserCreated={onUserCreated}
-          queueMode={useQueue}
+          queueMode={!!onNewUserAndCheckIn}
           onQueueSubmit={onNewUserAndCheckIn}
           eventId={selectedEvent?.id}
           eventDate={selectedEvent?.date}

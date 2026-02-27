@@ -3,7 +3,6 @@ import os
 from datetime import datetime
 from django.core.management.base import BaseCommand
 from django.utils import timezone
-from django.contrib.auth.models import User
 from api.models import Event, Student, Attendance
 
 class Command(BaseCommand):
@@ -78,9 +77,6 @@ class Command(BaseCommand):
                 event = Event.objects.create(
                     name=event_name,
                     organization='SOC',
-                    event_type='Meeting',
-                    description=f'SOC weekly meeting on {date_only.strftime("%B %d, %Y")}',
-                    location='TBD',
                     date=timezone.make_aware(datetime.combine(date_only, datetime.min.time().replace(hour=19)))  # 7 PM
                 )
                 self.stdout.write(f'Created event: {event_name}')
@@ -104,48 +100,22 @@ class Command(BaseCommand):
             # Find or create student
             student = None
             
-            # Try to find by A-Number first (stored as username)
+            # Try to find by A-number
+            student = None
             if record['a_number']:
-                try:
-                    user = User.objects.get(username=record['a_number'])
-                    try:
-                        student = user.student_profile
-                    except Student.DoesNotExist:
-                        student = None
-                except User.DoesNotExist:
-                    pass
-            
-            # Try to find by email
-            if not student:
-                try:
-                    user = User.objects.get(email=record['email'])
-                    try:
-                        student = user.student_profile
-                    except Student.DoesNotExist:
-                        student = None
-                except User.DoesNotExist:
-                    pass
+                student = Student.objects.filter(a_number=record['a_number']).first()
             
             # Create new student if not found
             if not student:
                 if not dry_run:
-                    # Create user account
-                    username = record['a_number'] if record['a_number'] else record['email'].split('@')[0]
-                    user = User.objects.create_user(
-                        username=username,
-                        email=record['email'],
-                        first_name=record['name'].split()[0] if record['name'] else '',
-                        last_name=' '.join(record['name'].split()[1:]) if len(record['name'].split()) > 1 else '',
-                        is_active=True
-                    )
-                    
-                    # Create student profile
+                    a_num = record['a_number'] if record['a_number'] else record['email'].split('@')[0]
+                    name_parts = (record['name'] or '').split()
+                    first_name = name_parts[0] if name_parts else ''
+                    last_name = ' '.join(name_parts[1:]) if len(name_parts) > 1 else ''
                     student = Student.objects.create(
-                        user=user,
-                        first_name=record['name'].split()[0] if record['name'] else '',
-                        last_name=' '.join(record['name'].split()[1:]) if len(record['name'].split()) > 1 else '',
-                        email=record['email'],
-                        username=record['a_number'] if record['a_number'] else ''
+                        a_number=a_num,
+                        first_name=first_name,
+                        last_name=last_name,
                     )
                     self.stdout.write(f'Created student: {record["name"]} ({record["email"]})')
                 else:
@@ -156,8 +126,8 @@ class Command(BaseCommand):
                 # Update existing student info if needed
                 if not dry_run:
                     updated = False
-                    if record['a_number'] and not student.username:
-                        student.username = record['a_number']
+                    if record['a_number'] and not student.a_number:
+                        student.a_number = record['a_number']
                         updated = True
                     if record['name'] and (not student.first_name or not student.last_name):
                         name_parts = record['name'].split()

@@ -6,24 +6,14 @@ from rest_framework.decorators import action, api_view, authentication_classes, 
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 from django.utils import timezone
-from .models import Student, Event, Attendance, Semester, Professor, Class, TeachingAssistant, PendingCheckIn
+from .models import Student, Event, Attendance
 from .serializers import (
     StudentSerializer, 
     EventSerializer, 
     AttendanceSerializer,
-    SemesterSerializer, 
-    ProfessorSerializer, 
-    ClassSerializer, 
-    TeachingAssistantSerializer,
-    ClassCreateSerializer,
-    TeachingAssistantCreateSerializer,
-    ClassListSerializer,
 )
-from django.contrib.auth.models import User, Group
 from rest_framework.permissions import AllowAny
 import re
-from rest_framework_simplejwt.views import TokenObtainPairView
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.db.models import Count, Sum
 from django.db import models
 from django.db.models import Q
@@ -65,24 +55,8 @@ class EventViewSet(viewsets.ModelViewSet):
     pagination_class = EventListPagination
 
     def get_queryset(self):
-        """Filter events by organization based on admin role; order by most recent first; annotate attendance count."""
-        from .models import EventOrganization, Organization
-
-        queryset = Event.objects.all()
-
-        # Check if user is authenticated and is admin, then filter by organization
-        # Super Admin, DAISSA, and Faculty can see all events
-        if self.request.user and self.request.user.is_authenticated:
-            admin_profile = getattr(self.request.user, 'adminuser', None)
-            if admin_profile and admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
-                # Include events where organization is primary OR where organization is secondary
-                queryset = queryset.filter(
-                    Q(organization=admin_profile.role) |
-                    Q(event_organizations__organization__name=admin_profile.role)
-                ).distinct()
-
-        # Most recent first; include attendance count for list display
-        return queryset.annotate(attendance_count=Count('attendances')).order_by('-date')
+        """Order by most recent first; annotate attendance count."""
+        return Event.objects.all().annotate(attendance_count=Count('attendances')).order_by('-date')
 
     @action(detail=True, methods=['get'], url_path='attendance/export')
     def export_attendance_csv(self, request, pk=None):
@@ -107,7 +81,7 @@ class EventViewSet(viewsets.ModelViewSet):
 
         for att in attendances:
             student = att.student
-            a_number = getattr(student, 'username', '') or 'N/A'
+            a_number = getattr(student, 'a_number', '') or 'N/A'
             writer.writerow([student.first_name, student.last_name, a_number])
 
         buffer.seek(0)
@@ -128,14 +102,6 @@ class EventViewSet(viewsets.ModelViewSet):
         past_events = self.get_queryset().filter(date__lte=timezone.now()).order_by('-date')
         serializer = self.get_serializer(past_events, many=True)
         return Response(serializer.data)
-
-    @action(detail=False, methods=['get'], permission_classes=[AllowAny])
-    def types(self, request):
-        """Get unique event types from filtered events"""
-        # Get queryset, handling unauthenticated users
-        queryset = self.get_queryset()
-        unique_types = queryset.values_list('event_type', flat=True).distinct().order_by('event_type')
-        return Response(list(unique_types))
 
     @action(detail=False, methods=['get'], permission_classes=[AllowAny])
     def organizations(self, request):
@@ -160,48 +126,9 @@ class EventViewSet(viewsets.ModelViewSet):
         unique_functions = Event.objects.values_list('function', flat=True).distinct().order_by('function')
         return Response(list(unique_functions))
 
-    @action(detail=False, methods=['post'])
-    def create_event_type(self, request):
-        """Create a new event type for the organization"""
-        try:
-            event_type = request.data.get('event_type')
-            if not event_type:
-                return Response({'error': 'Event type is required'}, status=status.HTTP_400_BAD_REQUEST)
-            
-            # Check if event type already exists for this organization
-            admin_profile = getattr(request.user, 'adminuser', None)
-            if admin_profile and admin_profile.role != 'Super Admin':
-                existing = Event.objects.filter(
-                    organization=admin_profile.role,
-                    event_type=event_type
-                ).exists()
-            else:
-                existing = Event.objects.filter(event_type=event_type).exists()
-            
-            if existing:
-                return Response({'error': 'Event type already exists'}, status=status.HTTP_400_BAD_REQUEST)
-            
-            return Response({'message': 'Event type created successfully', 'event_type': event_type})
-        except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
     def create(self, request, *args, **kwargs):
-        """Override create to handle recurring events and organization validation"""
+        """Override create to handle recurring events."""
         try:
-            # Check if user is a club leader and restrict organization to their role
-            admin_profile = getattr(request.user, 'adminuser', None)
-            if admin_profile and admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
-                # Club leaders can only create events for their own organization
-                organization = request.data.get('organization')
-                if organization and organization != admin_profile.role:
-                    return Response(
-                        {'error': f'You can only create events for your own organization ({admin_profile.role})'},
-                        status=status.HTTP_403_FORBIDDEN
-                    )
-                # Auto-set organization to their role if not provided
-                if not organization:
-                    request.data['organization'] = admin_profile.role
-            
             # Create the main event (first occurrence only for recurring; next occurrences created when students check in)
             serializer = self.get_serializer(data=request.data)
             serializer.is_valid(raise_exception=True)
@@ -235,36 +162,40 @@ def _compute_next_occurrence_date(template, from_date):
     return None
 
 
+def _recurrence_stop_may1(from_date):
+    """Return the next May 1 used as recurrence end: if from_date is before May 1, use that year; else next year."""
+    from datetime import datetime
+    if from_date.month < 5:
+        return datetime(from_date.year, 5, 1)
+    return datetime(from_date.year + 1, 5, 1)
+
+
 def get_or_create_next_occurrence(event):
     """
-    If event is part of a recurring series, ensure the next occurrence exists (create it if not).
-    Called when attendance is recorded so the next instance appears in the list.
+    If event is recurring, ensure the next occurrence exists (create it if not).
+    Recurring series stop at the start of May (05/01) each academic year; no per-event end date or parent link.
     Returns the next occurrence event or None.
     """
     from .models import EventOrganization
-    template = event.parent_event if event.parent_event_id else event
-    if not template.is_recurring or template.recurrence_type in (None, '', 'none'):
+    if not event.is_recurring or event.recurrence_type in (None, '', 'none'):
         return None
-    next_date = _compute_next_occurrence_date(template, event.date)
+    next_date = _compute_next_occurrence_date(event, event.date)
     if next_date is None:
         return None
-    if template.recurrence_end_date and next_date > template.recurrence_end_date:
+    may1 = _recurrence_stop_may1(event.date)
+    if next_date >= may1:
         return None
-    existing = Event.objects.filter(parent_event=template, date=next_date).first()
+    existing = Event.objects.filter(name=event.name, organization=event.organization, date=next_date).first()
     if existing:
         return existing
     new_event = Event.objects.create(
-        name=template.name,
-        organization=template.organization,
-        event_type=template.event_type or '',
-        description=template.description or '',
+        name=event.name,
+        organization=event.organization,
         date=next_date,
-        location=template.location or '',
         is_recurring=False,
         recurrence_type='none',
-        parent_event=template,
     )
-    for eo in EventOrganization.objects.filter(event=template):
+    for eo in EventOrganization.objects.filter(event=event):
         EventOrganization.objects.get_or_create(event=new_event, organization=eo.organization)
     return new_event
 
@@ -288,14 +219,6 @@ class AttendanceViewSet(viewsets.ModelViewSet):
                 queryset = queryset.filter(event_id=int(event_id))
             except ValueError:
                 pass
-
-        # Check if user is admin and filter by organization
-        admin_profile = getattr(self.request.user, 'adminuser', None)
-        if admin_profile and admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
-            queryset = queryset.filter(
-                Q(event__organization=admin_profile.role) |
-                Q(event__event_organizations__organization__name=admin_profile.role)
-            ).distinct()
 
         return queryset
 
@@ -356,55 +279,6 @@ class AttendanceViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-class SemesterViewSet(viewsets.ModelViewSet):
-    queryset = Semester.objects.all().order_by('-year', 'season')
-    serializer_class = SemesterSerializer
-    permission_classes = [AllowAny]
-    authentication_classes = []
-
-class ProfessorViewSet(viewsets.ModelViewSet):
-    queryset = Professor.objects.all().order_by('first_name', 'last_name')
-    serializer_class = ProfessorSerializer
-    permission_classes = [AllowAny]
-    authentication_classes = []
-
-    def list(self, request):
-        queryset = self.get_queryset()
-        serializer = self.get_serializer(queryset, many=True)
-        print(f"Professors API - Returning {len(serializer.data)} records")
-        return Response(serializer.data)
-
-class ClassViewSet(viewsets.ModelViewSet):
-    queryset = Class.objects.select_related('professor', 'semester').all().order_by('course_code')
-    permission_classes = [AllowAny]
-    authentication_classes = []
-
-    def get_serializer_class(self):
-        if self.action == 'list' or self.action == 'retrieve':
-            return ClassSerializer
-        return ClassListSerializer
-
-class TeachingAssistantViewSet(viewsets.ModelViewSet):
-    queryset = TeachingAssistant.objects.select_related(
-        'student',
-        'class_assigned',
-        'class_assigned__professor',
-        'class_assigned__semester'
-    ).all()
-    permission_classes = [AllowAny]
-    authentication_classes = []
-
-    def get_serializer_class(self):
-        if self.action in ['create', 'update', 'partial_update']:
-            return TeachingAssistantCreateSerializer
-        return TeachingAssistantSerializer
-
-    def list(self, request):
-        queryset = self.get_queryset()
-        serializer = self.get_serializer(queryset, many=True)
-        print("Serialized TA data:", serializer.data)
-        return Response(serializer.data)
-
 @api_view(['POST'])
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -430,45 +304,21 @@ def register_student(request):
                 'error': 'Please enter a valid A-number (format: a########)'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Check if user with this A-number already exists
-        if User.objects.filter(username=a_number).exists():
+        # Check if student with this A-number already exists
+        if Student.objects.filter(a_number=a_number).exists():
             return Response({
-                'error': 'A user with this A-number already exists'
+                'error': 'A student with this A-number already exists'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Create user account (password optional; students do not log in)
-        password = request.data.get('password') or None
-        if password:
-            user = User.objects.create_user(
-                username=a_number,
-                password=password,
-                first_name=request.data.get('first_name', ''),
-                last_name=request.data.get('last_name', '')
-            )
-        else:
-            user = User.objects.create(
-                username=a_number,
-                first_name=request.data.get('first_name', ''),
-                last_name=request.data.get('last_name', '')
-            )
-            user.set_unusable_password()
-            user.save()
-        
-        # Add to Students group
-        student_group, _ = Group.objects.get_or_create(name='Students')
-        user.groups.add(student_group)
-        
-        # Student profile is automatically created via signal (synchronous)
-        try:
-            student = Student.objects.get(user=user)
-            student_id = student.id
-        except Student.DoesNotExist:
-            student_id = None
-        
+        student = Student.objects.create(
+            a_number=a_number,
+            first_name=request.data.get('first_name', ''),
+            last_name=request.data.get('last_name', '')
+        )
         return Response({
             'message': 'Student account created successfully',
             'a_number': a_number,
-            'student_id': student_id
+            'student_id': student.id
         }, status=status.HTTP_201_CREATED)
         
     except Exception as e:
@@ -487,162 +337,22 @@ def check_a_number(request):
         return Response({'error': 'a_number query parameter is required'}, status=status.HTTP_400_BAD_REQUEST)
     if not re.match(r'^a\d{8}$', a_number):
         return Response({'error': 'Invalid A-number format'}, status=status.HTTP_400_BAD_REQUEST)
-    exists = User.objects.filter(username=a_number).exists()
+    exists = Student.objects.filter(a_number=a_number).exists()
     return Response({'exists': exists})
 
 
 @api_view(['GET'])
 @authentication_classes([])
 @permission_classes([AllowAny])
-def get_user_details(request):
-    """Return current user details if authenticated; otherwise minimal anonymous payload."""
-    if not getattr(request.user, 'is_authenticated', False) or not request.user.is_authenticated:
-        return Response({
-            'id': None,
-            'username': '',
-            'first_name': '',
-            'last_name': '',
-            'groups': [],
-            'is_superuser': False,
-            'student_id': None,
-            'student_profile': None,
-            'admin_profile': None,
-            'is_admin': False
-        })
-    user = request.user
-    student = user.student_profile if hasattr(user, 'student_profile') else None
-    admin_profile = user.adminuser if hasattr(user, 'adminuser') else None
-    return Response({
-        'id': user.id,
-        'username': user.username,
-        'first_name': user.first_name,
-        'last_name': user.last_name,
-        'groups': list(user.groups.values_list('name', flat=True)),
-        'is_superuser': user.is_superuser,
-        'student_id': student.id if student else None,
-        'student_profile': {
-            'id': student.id,
-            'total_points': student.total_points
-        } if student else None,
-        'admin_profile': {
-            'id': admin_profile.id,
-            'role': admin_profile.role,
-            'first_name': admin_profile.first_name,
-            'last_name': admin_profile.last_name
-        } if admin_profile else None,
-        'is_admin': admin_profile is not None
-    })
-
-@api_view(['POST'])
-@authentication_classes([])
-@permission_classes([AllowAny])
-def change_password(request):
-    """Change user password. Requires authenticated user."""
-    if not getattr(request.user, 'is_authenticated', False) or not request.user.is_authenticated:
-        return Response({'error': 'You must be logged in to change your password.'}, status=status.HTTP_400_BAD_REQUEST)
-    try:
-        user = request.user
-        current_password = request.data.get('current_password')
-        new_password = request.data.get('new_password')
-        confirm_password = request.data.get('confirm_password')
-        
-        # Validate required fields
-        if not all([current_password, new_password, confirm_password]):
-            return Response({
-                'error': 'All password fields are required'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Validate password confirmation
-        if new_password != confirm_password:
-            return Response({
-                'error': 'New passwords do not match'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Validate current password
-        if not user.check_password(current_password):
-            return Response({
-                'error': 'Current password is incorrect'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Validate new password strength
-        if len(new_password) < 8:
-            return Response({
-                'error': 'New password must be at least 8 characters long'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Set new password
-        user.set_password(new_password)
-        user.save()
-        
-        return Response({
-            'message': 'Password changed successfully'
-        }, status=status.HTTP_200_OK)
-        
-    except Exception as e:
-        return Response({
-            'error': str(e)
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
-    def validate(self, attrs):
-        data = super().validate(attrs)
-        
-        # Add custom claims
-        data['username'] = self.user.username
-        data['first_name'] = self.user.first_name
-        data['last_name'] = self.user.last_name
-        data['groups'] = list(self.user.groups.values_list('name', flat=True))
-        data['is_superuser'] = self.user.is_superuser
-        
-        if hasattr(self.user, 'student_profile'):
-            data['student_id'] = self.user.student_profile.id
-            data['student_profile'] = {
-                'id': self.user.student_profile.id,
-                'total_points': self.user.student_profile.total_points
-            }
-        
-        if hasattr(self.user, 'adminuser'):
-            data['admin_profile'] = {
-                'id': self.user.adminuser.id,
-                'role': self.user.adminuser.role,
-                'first_name': self.user.adminuser.first_name,
-                'last_name': self.user.adminuser.last_name
-            }
-            data['is_admin'] = True
-        else:
-            data['is_admin'] = False
-        
-        return data
-
-class CustomTokenObtainPairView(TokenObtainPairView):
-    serializer_class = CustomTokenObtainPairSerializer
-
-
-@api_view(['GET'])
-@authentication_classes([])
-@permission_classes([AllowAny])
 def total_students(request):
-    # Optional organization filter via query param
     organization_filter = request.GET.get('organization', None)
-    admin_profile = getattr(request.user, 'adminuser', None)
-    
-    # With AllowAny permission, we allow organization filtering via query parameter
     if organization_filter:
-        # Filter students who attended events from the specified organization (primary or secondary)
         from .models import EventOrganization
         count = Student.objects.filter(
             Q(attendances__event__organization=organization_filter) |
             Q(attendances__event__event_organizations__organization__name=organization_filter)
         ).distinct().count()
-    elif admin_profile and admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
-        # Filter students who attended events from this admin's organization (primary or secondary)
-        from .models import EventOrganization
-        count = Student.objects.filter(
-            Q(attendances__event__organization=admin_profile.role) |
-            Q(attendances__event__event_organizations__organization__name=admin_profile.role)
-        ).distinct().count()
     else:
-        # Super Admin, DAISSA, Faculty, or non-admin sees all students
         count = Student.objects.count()
     return Response({'count': count})
 
@@ -652,29 +362,13 @@ def total_students(request):
 def participating_students(request):
     filter_type = request.GET.get('filter', 'semester')
     organization_filter = request.GET.get('organization', None)
-    
-    # Check if user is admin and filter by organization
-    admin_profile = getattr(request.user, 'adminuser', None)
-    
-    # Base query
-    query = Student.objects
-    
-    # Apply organization filter
-    # With AllowAny permission, we allow organization filtering via query parameter
     from .models import EventOrganization
+    query = Student.objects
     if organization_filter:
-        # Filter by organization parameter (primary or secondary)
         query = query.filter(
             Q(attendances__event__organization=organization_filter) |
             Q(attendances__event__event_organizations__organization__name=organization_filter)
         )
-    elif admin_profile and admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
-        # Filter by admin's organization (primary or secondary)
-        query = query.filter(
-            Q(attendances__event__organization=admin_profile.role) |
-            Q(attendances__event__event_organizations__organization__name=admin_profile.role)
-        )
-    
     # Get current date
     now = timezone.now()
     
@@ -713,47 +407,24 @@ def participating_students(request):
 def student_points(request):
     filter_type = request.GET.get('filter', 'semester')
     organization_filter = request.GET.get('organization', None)
-    
-    # Check if user is admin and filter by organization
-    admin_profile = getattr(request.user, 'adminuser', None)
-    
-    # Base query
-    students = Student.objects.all()
-    
-    # Apply organization filter
-    # With AllowAny permission, we allow organization filtering via query parameter
     from .models import EventOrganization
+    students = Student.objects.all()
     if organization_filter:
-        # Filter by organization parameter (primary or secondary)
         students = students.filter(
             Q(attendances__event__organization=organization_filter) |
             Q(attendances__event__event_organizations__organization__name=organization_filter)
         ).distinct()
-    elif admin_profile and admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
-        # If no organization filter but user is authenticated non-super-admin, filter by their role
-            students = students.filter(
-                Q(attendances__event__organization=admin_profile.role) |
-                Q(attendances__event__event_organizations__organization__name=admin_profile.role)
-            ).distinct()
-    
-    # Get current date
     now = timezone.now()
-    
     if filter_type == 'semester':
-        # Filter by current semester date range
         current_month = now.month
         current_year = now.year
-        
-        if current_month >= 8:  # Fall semester (Aug-Dec)
+        if current_month >= 8:
             semester_start = datetime(current_year, 8, 1)
             semester_end = datetime(current_year + 1, 1, 1)
-        else:  # Spring semester (Jan-July)
+        else:
             semester_start = datetime(current_year, 1, 1)
             semester_end = datetime(current_year, 8, 1)
-        
-        # For organization filtering, we need to check both primary and secondary organizations
         if organization_filter:
-            # Filter by organization parameter (primary or secondary) AND date range
             students = students.annotate(
                 filtered_points=Count(
                     'attendances',
@@ -765,21 +436,7 @@ def student_points(request):
                     )
                 )
             )
-        elif admin_profile and admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
-            # Filter by organization (primary or secondary) AND date range (for authenticated non-super-admin)
-            students = students.annotate(
-                filtered_points=Count(
-                    'attendances',
-                    filter=models.Q(
-                        Q(attendances__event__organization=admin_profile.role) |
-                        Q(attendances__event__event_organizations__organization__name=admin_profile.role),
-                        attendances__event__date__gte=semester_start,
-                        attendances__event__date__lt=semester_end
-                    )
-                )
-            )
         else:
-            # No organization filter, just date range
             students = students.annotate(
                 filtered_points=Count(
                     'attendances',
@@ -789,15 +446,10 @@ def student_points(request):
                     )
                 )
             )
-    
     elif filter_type == 'year':
-        # Calculate academic year start (August 1st of current or previous year)
         year = now.year if now.month >= 8 else now.year - 1
         academic_year_start = datetime(year, 8, 1)
-        
-        # For organization filtering, we need to check both primary and secondary organizations
         if organization_filter:
-            # Filter by organization parameter (primary or secondary) AND date range
             students = students.annotate(
                 filtered_points=Count(
                     'attendances',
@@ -808,31 +460,15 @@ def student_points(request):
                     )
                 )
             )
-        elif admin_profile and admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
-            # Filter by organization (primary or secondary) AND date range (for authenticated non-super-admin)
-            students = students.annotate(
-                filtered_points=Count(
-                    'attendances',
-                    filter=models.Q(
-                        Q(attendances__event__organization=admin_profile.role) |
-                        Q(attendances__event__event_organizations__organization__name=admin_profile.role),
-                        attendances__event__date__gte=academic_year_start
-                    )
-                )
-            )
         else:
-            # No organization filter, just date range
             students = students.annotate(
                 filtered_points=Count(
                     'attendances',
                     filter=models.Q(attendances__event__date__gte=academic_year_start)
                 )
             )
-    
     else:  # 'all'
-        # For organization filtering, we need to check both primary and secondary organizations
         if organization_filter:
-            # Filter by organization parameter (primary or secondary)
             students = students.annotate(
                 filtered_points=Count(
                     'attendances',
@@ -842,23 +478,8 @@ def student_points(request):
                     )
                 )
             )
-        elif admin_profile and admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
-            # Filter by organization (primary or secondary) (for authenticated non-super-admin)
-            students = students.annotate(
-                filtered_points=Count(
-                    'attendances',
-                    filter=models.Q(
-                        Q(attendances__event__organization=admin_profile.role) |
-                        Q(attendances__event__event_organizations__organization__name=admin_profile.role)
-                    )
-                )
-            )
         else:
-            # No organization filter
-            students = students.annotate(
-                filtered_points=Count('attendances')
-            )
-
+            students = students.annotate(filtered_points=Count('attendances'))
     # Order by points (handling NULL values)
     students = students.order_by(models.F('filtered_points').desc(nulls_last=True))
     
@@ -870,161 +491,6 @@ def student_points(request):
     } for student in students]
     
     return Response(data)
-
-@api_view(['GET'])
-@authentication_classes([])
-@permission_classes([AllowAny])
-def list_admin_users(request):
-    """Get all admin users."""
-    from .models import AdminUser
-    admin_users = AdminUser.objects.select_related('user').all().order_by('last_name', 'first_name')
-    
-    admin_users_data = []
-    for admin_user in admin_users:
-        admin_users_data.append({
-            'id': admin_user.id,
-            'user_id': admin_user.user.id,
-            'username': admin_user.user.username,
-            'first_name': admin_user.first_name,
-            'last_name': admin_user.last_name,
-            'role': admin_user.role,
-            'created_at': admin_user.created_at,
-            'student_id': admin_user.user.student_profile.id if hasattr(admin_user.user, 'student_profile') else None
-        })
-    
-    return Response(admin_users_data)
-
-@api_view(['POST'])
-@authentication_classes([])
-@permission_classes([AllowAny])
-def create_admin_user(request):
-    """Create a new admin user."""
-    from .models import AdminUser
-    from django.contrib.auth.models import User
-    
-    role = request.data.get('role')
-    student_id = request.data.get('student_id')
-    first_name = request.data.get('first_name')
-    last_name = request.data.get('last_name')
-    
-    if not role:
-        return Response(
-            {'error': 'role is required'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    
-    # If student_id is provided, create admin from existing student
-    if student_id:
-        try:
-            student = Student.objects.get(id=student_id)
-        except Student.DoesNotExist:
-            return Response(
-                {'error': 'Student not found'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
-        # Check if admin user already exists for this student
-        if hasattr(student.user, 'adminuser'):
-            return Response(
-                {'error': 'This student is already an admin user'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Create admin user from student
-        admin_user = AdminUser.objects.create(
-            user=student.user,
-            first_name=student.first_name,
-            last_name=student.last_name,
-            role=role
-        )
-    else:
-        # Create new user and admin user (for Faculty)
-        if not first_name or not last_name:
-            return Response(
-                {'error': 'first_name and last_name are required when creating a new user'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Generate username from first_name and last_name
-        base_username = f"{first_name.lower()}{last_name.lower()}".replace(' ', '')
-        username = base_username
-        counter = 1
-        while User.objects.filter(username=username).exists():
-            username = f"{base_username}{counter}"
-            counter += 1
-        
-        # Create user with default password
-        user = User.objects.create_user(
-            username=username,
-            password='changeme!',
-            first_name=first_name,
-            last_name=last_name
-        )
-        
-        # Create admin user
-        admin_user = AdminUser.objects.create(
-            user=user,
-            first_name=first_name,
-            last_name=last_name,
-            role=role
-        )
-    
-    return Response({
-        'id': admin_user.id,
-        'user_id': admin_user.user.id,
-        'username': admin_user.user.username,
-        'first_name': admin_user.first_name,
-        'last_name': admin_user.last_name,
-        'role': admin_user.role,
-        'created_at': admin_user.created_at
-    }, status=status.HTTP_201_CREATED)
-
-@api_view(['PUT', 'PATCH'])
-@authentication_classes([])
-@permission_classes([AllowAny])
-def update_admin_user(request, admin_user_id):
-    """Update an admin user."""
-    from .models import AdminUser
-    
-    try:
-        admin_user = AdminUser.objects.get(id=admin_user_id)
-    except AdminUser.DoesNotExist:
-        return Response(
-            {'error': 'Admin user not found'},
-            status=status.HTTP_404_NOT_FOUND
-        )
-    
-    role = request.data.get('role')
-    if role:
-        admin_user.role = role
-        admin_user.save()
-    
-    return Response({
-        'id': admin_user.id,
-        'user_id': admin_user.user.id,
-        'username': admin_user.user.username,
-        'first_name': admin_user.first_name,
-        'last_name': admin_user.last_name,
-        'role': admin_user.role,
-        'created_at': admin_user.created_at
-    })
-
-@api_view(['DELETE'])
-@authentication_classes([])
-@permission_classes([AllowAny])
-def delete_admin_user(request, admin_user_id):
-    """Delete an admin user."""
-    from .models import AdminUser
-    
-    try:
-        admin_user = AdminUser.objects.get(id=admin_user_id)
-        admin_user.delete()
-        return Response({'message': 'Admin user deleted successfully'}, status=status.HTTP_200_OK)
-    except AdminUser.DoesNotExist:
-        return Response(
-            {'error': 'Admin user not found'},
-            status=status.HTTP_404_NOT_FOUND
-        )
 
 @api_view(['GET'])
 @authentication_classes([])  # avoid 401 on invalid/expired JWT; this endpoint is AllowAny
@@ -1105,137 +571,19 @@ def student_merge_duplicates(request):
 
 
 def _get_or_create_student_by_a_number(first_name, last_name, a_number):
-    """Return (student, created). If user exists with a_number, return that student; else create user+student."""
+    """Return (student, created). If a student exists with this A-number, return that student; else create one."""
     a_number = (a_number or '').lower().strip()
     if not a_number:
         return None, False
-    user = User.objects.filter(username=a_number).first()
-    if user:
-        try:
-            student = Student.objects.get(user=user)
-            return student, False
-        except Student.DoesNotExist:
-            pass
-    user = User.objects.create(
-        username=a_number,
+    student = Student.objects.filter(a_number=a_number).first()
+    if student:
+        return student, False
+    student = Student.objects.create(
+        a_number=a_number,
         first_name=first_name or '',
         last_name=last_name or '',
     )
-    user.set_unusable_password()
-    user.save()
-    student_group, _ = Group.objects.get_or_create(name='Students')
-    user.groups.add(student_group)
-    try:
-        student = Student.objects.get(user=user)
-        return student, True
-    except Student.DoesNotExist:
-        return None, False
-
-
-@api_view(['POST'])
-@authentication_classes([])
-@permission_classes([AllowAny])
-def add_pending_checkin(request):
-    """Add one pending check-in (from scan or check-in page). Body: temp_id, event_id, event_date (optional); and either student_id OR first_name, last_name, a_number."""
-    temp_id = request.data.get('temp_id')
-    event_id = request.data.get('event_id')
-    event_date = request.data.get('event_date', '')
-    if not temp_id or not event_id:
-        return Response({'error': 'temp_id and event_id are required'}, status=status.HTTP_400_BAD_REQUEST)
-    try:
-        event = Event.objects.get(id=event_id)
-    except Event.DoesNotExist:
-        return Response({'error': f'Event {event_id} does not exist'}, status=status.HTTP_404_NOT_FOUND)
-    student_id = request.data.get('student_id')
-    if student_id is not None:
-        try:
-            student = Student.objects.get(id=student_id)
-        except Student.DoesNotExist:
-            return Response({'error': f'Student {student_id} does not exist'}, status=status.HTTP_404_NOT_FOUND)
-        PendingCheckIn.objects.update_or_create(
-            temp_id=temp_id,
-            defaults={
-                'student': student,
-                'event': event,
-                'event_date': event_date,
-                'first_name': '',
-                'last_name': '',
-                'a_number': '',
-            },
-        )
-    else:
-        first_name = request.data.get('first_name', '')
-        last_name = request.data.get('last_name', '')
-        a_number = (request.data.get('a_number') or '').strip()
-        if not a_number:
-            return Response({'error': 'student_id or (first_name, last_name, a_number) required'}, status=status.HTTP_400_BAD_REQUEST)
-        PendingCheckIn.objects.update_or_create(
-            temp_id=temp_id,
-            defaults={
-                'student': None,
-                'event': event,
-                'event_date': event_date,
-                'first_name': first_name,
-                'last_name': last_name,
-                'a_number': a_number,
-            },
-        )
-    return Response({'ok': True, 'temp_id': temp_id}, status=status.HTTP_201_CREATED)
-
-
-@api_view(['DELETE'])
-@authentication_classes([])
-@permission_classes([AllowAny])
-def remove_pending_checkin(request, temp_id):
-    """Remove one pending check-in by temp_id."""
-    deleted, _ = PendingCheckIn.objects.filter(temp_id=temp_id).delete()
-    if not deleted:
-        return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
-    return Response(status=status.HTTP_204_NO_CONTENT)
-
-
-@api_view(['POST'])
-@authentication_classes([])
-@permission_classes([AllowAny])
-def flush_pending_checkins(request):
-    """Process all pending check-ins: create students where needed, create attendances, then delete pending. Used by Refresh Attendances button."""
-    pending = list(PendingCheckIn.objects.select_related('student', 'event').order_by('event_id', 'created_at'))
-    if not pending:
-        return Response({'flushed': 0, 'attendances': 0, 'students_created': 0})
-
-    # Group by event (like client flush)
-    by_event = {}
-    for p in pending:
-        by_event.setdefault(p.event_id, []).append(p)
-
-    students_created = 0
-    attendances_created = 0
-
-    for event_id, items in by_event.items():
-        event = items[0].event
-        for p in items:
-            if p.student_id:
-                student_id = p.student_id
-            else:
-                student, created = _get_or_create_student_by_a_number(p.first_name, p.last_name, p.a_number)
-                if not student:
-                    continue
-                if created:
-                    students_created += 1
-                student_id = student.id
-            if Attendance.objects.filter(student_id=student_id, event_id=event_id).exists():
-                pass
-            else:
-                Attendance.objects.create(student_id=student_id, event_id=event_id)
-                attendances_created += 1
-            get_or_create_next_occurrence(event)
-
-    PendingCheckIn.objects.all().delete()
-    return Response({
-        'flushed': len(pending),
-        'attendances': attendances_created,
-        'students_created': students_created,
-    }, status=status.HTTP_200_OK)
+    return student, True
 
 
 @api_view(['GET'])
@@ -1248,37 +596,25 @@ def search_students(request):
     if not query or len(query) < 2:
         return Response([])
     
-    # Search by name or username (which contains A-number)
+    # Search by name or A-number
     students = Student.objects.filter(
         Q(first_name__icontains=query) |
         Q(last_name__icontains=query) |
-        Q(user__username__icontains=query) |
-        Q(username__icontains=query)
-    ).select_related('user')[:20]  # Limit to 20 results
+        Q(a_number__icontains=query)
+    )[:20]  # Limit to 20 results
     
-    students_data = []
-    for student in students:
-        # Check if user has an admin profile
-        # Django's OneToOneField raises RelatedObjectDoesNotExist when the related object doesn't exist
-        try:
-            admin_user = student.user.adminuser
-            is_admin = True
-            admin_role = admin_user.role
-        except Exception:
-            # Catch any exception (RelatedObjectDoesNotExist or AttributeError)
-            is_admin = False
-            admin_role = None
-        
-        students_data.append({
+    students_data = [
+        {
             'id': student.id,
             'first_name': student.first_name,
             'last_name': student.last_name,
-            'a_number': student.user.username if student.user.username else '',
-            'username': student.user.username,
-            'is_admin': is_admin,
-            'admin_role': admin_role
-        })
-    
+            'a_number': student.a_number or '',
+            'username': student.a_number or '',
+            'is_admin': False,
+            'admin_role': None
+        }
+        for student in students
+    ]
     return Response(students_data)
 
 @api_view(['GET', 'POST'])
@@ -1324,15 +660,12 @@ def list_organizations(request):
 def update_events_organization_name(old_name, new_name):
     """
     When an organization is renamed, update all events that reference the old name.
-    Event.organization (and event_type when it matched) are CharFields storing the name.
+    Event.organization is a CharField storing the name.
     EventOrganization uses FK to Organization, so those stay correct after Organization.name is saved.
     """
     if not old_name or not new_name or old_name == new_name:
         return 0
-    updated = Event.objects.filter(organization=old_name).update(organization=new_name)
-    # Keep event_type in sync when it was the same as the org name
-    Event.objects.filter(event_type=old_name).update(event_type=new_name)
-    return updated
+    return Event.objects.filter(organization=old_name).update(organization=new_name)
 
 
 @api_view(['PUT', 'PATCH', 'DELETE'])
@@ -1379,15 +712,6 @@ def manage_organization(request, organization_id):
         })
     
     elif request.method == 'DELETE':
-        # Check if organization is being used by any admin users
-        from .models import AdminUser
-        admin_users_with_role = AdminUser.objects.filter(role=organization.name).count()
-        if admin_users_with_role > 0:
-            return Response(
-                {'error': f'Cannot delete organization. It is currently assigned to {admin_users_with_role} admin user(s).'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
         organization.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -1395,34 +719,19 @@ def manage_organization(request, organization_id):
 @authentication_classes([])
 @permission_classes([AllowAny])
 def attendance_overview(request):
-    # Optional organization filter via query param or admin role
-    # Super Admin, DAISSA, and Faculty can see all events
-    admin_profile = getattr(request.user, 'adminuser', None)
-    
-    # Base query
     attendance_query = Attendance.objects.all()
-    
-    # Apply organization filter if admin
-    if admin_profile and admin_profile.role not in ['Super Admin', 'DAISSA', 'Faculty']:
-        from .models import EventOrganization
-        # Include attendances for events where organization is primary OR secondary
-        attendance_query = attendance_query.filter(
-            Q(event__organization=admin_profile.role) |
-            Q(event__event_organizations__organization__name=admin_profile.role)
-        ).distinct()
-    
     attendance_data = attendance_query.annotate(
         date=models.functions.TruncMonth('checked_in_at')
-    ).values('date', 'event__event_type').annotate(
+    ).values('date', 'event__organization').annotate(
         count=Count('id')
     ).order_by('date')
 
-    # Transform data for frontend
+    # Transform data for frontend (use organization as grouping key)
     transformed_data = []
     for entry in attendance_data:
         transformed_data.append({
             'date': entry['date'],
-            'event_type': entry['event__event_type'],
+            'event_type': entry['event__organization'],
             'attendance_counts': entry['count']
         })
 

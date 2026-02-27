@@ -25,15 +25,6 @@ import QRCodeGenerator from "@/components/QRCodeGenerator"
 import CreateEvent from "@/components/CreateEvent"
 import { API_URL } from "@/config/api"
 import { isEventTodayMST, formatMSTDateString } from "@/utils/mstDate"
-import {
-  getQueue,
-  addPendingAttendance,
-  addPendingStudent,
-  runFlushAll,
-  removePendingAttendanceByTempId,
-  addPendingCheckInToServer,
-  removePendingCheckInFromServer,
-} from "@/utils/checkInQueue"
 
 function CheckInPage() {
   const { eventId } = useParams()
@@ -46,8 +37,8 @@ function CheckInPage() {
   const { toast } = useToast()
   const { user } = useAuth()
   const [showAllUpcoming, setShowAllUpcoming] = useState(false)
-  const [queueVersion, setQueueVersion] = useState(0)
   const [showCreateEventDialog, setShowCreateEventDialog] = useState(false)
+  const [checkingIn, setCheckingIn] = useState(false)
 
   const fetchEvents = useCallback(async () => {
     try {
@@ -98,17 +89,6 @@ function CheckInPage() {
     if (selectedEvent) fetchAttendances()
   }, [selectedEvent, fetchAttendances])
 
-  useEffect(() => {
-    const id = setInterval(() => {
-      runFlushAll(API_URL, (eventId, err) => {
-        console.error("Flush error for event", eventId, err)
-        toast({ title: "Flush error", description: String(err?.message), variant: "destructive" })
-      })
-      setQueueVersion((v) => v + 1)
-    }, 15000)
-    return () => clearInterval(id)
-  }, [toast])
-
   const handleUserCreated = useCallback(() => {
     fetchStudents()
   }, [fetchStudents])
@@ -116,66 +96,73 @@ function CheckInPage() {
   const handleCheckIn = useCallback(
     async (student) => {
       if (!selectedEvent) return
-      const tempId = addPendingAttendance({
-        studentId: student.id,
-        eventId: selectedEvent.id,
-        eventDate: selectedEvent.date,
-      })
+      setCheckingIn(true)
       try {
-        await addPendingCheckInToServer(API_URL, {
-          temp_id: tempId,
-          student_id: student.id,
-          event_id: selectedEvent.id,
-          event_date: selectedEvent.date || "",
+        await axios.post(
+          `${API_URL}/api/attendance/`,
+          { student: student.id, event: selectedEvent.id },
+          { headers: user?.token ? { Authorization: `Bearer ${user.token}` } : {} }
+        )
+        toast({
+          title: "Checked in",
+          description: `${student.first_name} ${student.last_name} has been checked in.`,
+          className: "bg-green-50 border-green-200 text-black",
         })
-      } catch (e) {
-        console.error("Server sync failed:", e)
-        toast({ title: "Synced locally", description: "Refresh Attendances will sync when online.", variant: "default" })
+        fetchAttendances()
+      } catch (err) {
+        const msg = err.response?.data?.error || err.message
+        const alreadyCheckedIn = /already checked in|already exists/i.test(msg)
+        toast({
+          title: alreadyCheckedIn ? "Already checked in" : "Error",
+          description: alreadyCheckedIn ? "This student is already checked in for this event." : msg,
+          variant: "destructive",
+        })
+      } finally {
+        setCheckingIn(false)
       }
-      toast({
-        title: "Checked in",
-        description: `${student.first_name} ${student.last_name} has been checked in (pending sync).`,
-        className: "bg-green-50 border-green-200 text-black",
-      })
-      setQueueVersion((v) => v + 1)
     },
-    [selectedEvent, toast]
+    [selectedEvent, toast, user?.token, fetchAttendances]
   )
 
   const handleNewUserAndCheckIn = useCallback(
     async (data) => {
       if (!selectedEvent) return
-      const studentTempId = addPendingStudent({
-        first_name: data.first_name,
-        last_name: data.last_name,
-        a_number: data.a_number,
-      })
-      const tempId = addPendingAttendance({
-        studentId: studentTempId,
-        eventId: selectedEvent.id,
-        eventDate: selectedEvent.date,
-      })
+      setCheckingIn(true)
       try {
-        await addPendingCheckInToServer(API_URL, {
-          temp_id: tempId,
-          event_id: selectedEvent.id,
-          event_date: selectedEvent.date || "",
-          first_name: data.first_name,
-          last_name: data.last_name,
-          a_number: data.a_number,
+        const regRes = await axios.post(
+          `${API_URL}/api/register/`,
+          {
+            first_name: data.first_name,
+            last_name: data.last_name,
+            a_number: data.a_number,
+          },
+          { headers: { "Content-Type": "application/json" } }
+        )
+        const studentId = regRes.data.student_id
+        if (studentId == null) {
+          toast({ title: "Error", description: "Registration did not return a student ID.", variant: "destructive" })
+          return
+        }
+        await axios.post(
+          `${API_URL}/api/attendance/`,
+          { student: studentId, event: selectedEvent.id },
+          { headers: user?.token ? { Authorization: `Bearer ${user.token}` } : {} }
+        )
+        toast({
+          title: "Checked in",
+          description: `${data.first_name} ${data.last_name} has been added and checked in.`,
+          className: "bg-green-50 border-green-200 text-black",
         })
-      } catch (e) {
-        console.error("Server sync failed:", e)
-        toast({ title: "Synced locally", description: "Refresh Attendances will sync when online.", variant: "default" })
+        fetchStudents()
+        fetchAttendances()
+      } catch (err) {
+        const msg = err.response?.data?.error || err.message
+        toast({ title: "Error", description: msg, variant: "destructive" })
+      } finally {
+        setCheckingIn(false)
       }
-      toast({
-        title: "Checked in",
-        description: `${data.first_name} ${data.last_name} has been added and checked in (pending sync).`,
-        className: "bg-green-50 border-green-200 text-black",
-      })
-      setQueueVersion((v) => v + 1)
     },
-    [selectedEvent, toast]
+    [selectedEvent, toast, user?.token, fetchStudents, fetchAttendances]
   )
 
   const handleRemoveAttendance = useCallback(
@@ -197,44 +184,9 @@ function CheckInPage() {
     [user?.token, fetchAttendances, toast]
   )
 
-  const handleRemovePendingAttendance = useCallback(async (tempId) => {
-    removePendingAttendanceByTempId(tempId)
-    try {
-      await removePendingCheckInFromServer(API_URL, tempId)
-    } catch (e) {
-      console.error("Server remove failed:", e)
-    }
-    setQueueVersion((v) => v + 1)
-    toast({ title: "Removed", description: "Student removed from check-in (pending sync)." })
-  }, [])
-
-  const mergedAttendances = (() => {
+  const eventAttendances = (() => {
     const apiList = Array.isArray(attendances) ? attendances : []
-    const forEvent = selectedEvent
-      ? apiList.filter((a) => Number(a.event) === Number(selectedEvent.id))
-      : []
-    const queue = getQueue()
-    const pendingForEvent = (queue.attendances || []).filter(
-      (a) => Number(a.eventId) === Number(selectedEvent?.id)
-    )
-    const resolved = pendingForEvent.map((p) => {
-      let student
-      if (typeof p.studentId === "number") {
-        student = students.find((s) => s.id === p.studentId)
-      } else {
-        const pendingStu = (queue.students || []).find((s) => s.tempId === p.studentId)
-        if (pendingStu)
-          student = {
-            id: p.studentId,
-            first_name: pendingStu.first_name,
-            last_name: pendingStu.last_name,
-            email: pendingStu.a_number ? `${pendingStu.a_number}@usu.edu` : "",
-            username: pendingStu.a_number,
-          }
-      }
-      return student ? { student, event: selectedEvent?.id, tempId: p.tempId } : null
-    })
-    return [...forEvent, ...resolved.filter(Boolean)]
+    return selectedEvent ? apiList.filter((a) => Number(a.event) === Number(selectedEvent.id)) : []
   })()
 
   const handleCreateEvent = useCallback(
@@ -381,15 +333,14 @@ function CheckInPage() {
           <CheckInStudents
             students={students}
             onCheckIn={handleCheckIn}
-            attendances={mergedAttendances}
+            attendances={eventAttendances}
             selectedEvent={selectedEvent}
             onUserCreated={handleUserCreated}
-            useQueue
             onNewUserAndCheckIn={handleNewUserAndCheckIn}
             onRemoveAttendance={handleRemoveAttendance}
-            onRemovePendingAttendance={handleRemovePendingAttendance}
             hideCheckedInList
             hideStudentList
+            checkingIn={checkingIn}
           />
         </div>
       )}

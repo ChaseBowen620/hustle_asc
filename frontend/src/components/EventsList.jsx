@@ -74,7 +74,6 @@ function Calendar({ events, onCreateEvent }) {
                     <p className="text-sm text-neutral-500">
                       {format(new Date(event.date), 'h:mm a')}
                     </p>
-                    <p className="text-sm text-neutral-500">{event.location}</p>
                   </div>
                 ))
               ) : (

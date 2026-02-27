@@ -15,7 +15,6 @@ from collections import Counter
 from datetime import datetime, timedelta
 from django.core.management.base import BaseCommand
 from django.utils import timezone
-from django.contrib.auth.models import User
 from django.db.models import Q
 from api.models import Event, Student, Attendance, Organization
 from api.onetap_webhook_handler import create_or_find_student, create_or_find_event

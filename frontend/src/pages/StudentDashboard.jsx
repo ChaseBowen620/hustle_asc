@@ -102,10 +102,8 @@ function StudentDashboard() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Organization</TableHead>
-                      <TableHead>Event Type</TableHead>
                       <TableHead>Name</TableHead>
                       <TableHead>Date</TableHead>
-                      <TableHead>Location</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -116,7 +114,6 @@ function StudentDashboard() {
                         onClick={() => handleEventClick(event)}
                       >
                         <TableCell className="font-medium">{event.organization}</TableCell>
-                        <TableCell>{event.event_type}</TableCell>
                         <TableCell>{event.name}</TableCell>
                         <TableCell>
                           <span className="sm:hidden">
@@ -126,7 +123,6 @@ function StudentDashboard() {
                             {format(new Date(event.date), 'MMM d, yyyy h:mm a')}
                           </span>
                         </TableCell>
-                        <TableCell>{event.location}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -158,24 +154,10 @@ function StudentDashboard() {
                   <p className="text-sm">{selectedEvent.organization}</p>
                 </div>
                 <div>
-                  <h4 className="font-semibold text-sm text-gray-600">Event Type</h4>
-                  <p className="text-sm">{selectedEvent.event_type}</p>
-                </div>
-                <div>
                   <h4 className="font-semibold text-sm text-gray-600">Date & Time</h4>
                   <p className="text-sm">{format(new Date(selectedEvent.date), 'EEEE, MMMM d, yyyy h:mm a')}</p>
                 </div>
-                <div>
-                  <h4 className="font-semibold text-sm text-gray-600">Location</h4>
-                  <p className="text-sm">{selectedEvent.location}</p>
-                </div>
               </div>
-              {selectedEvent.description && (
-                <div>
-                  <h4 className="font-semibold text-sm text-gray-600 mb-2">Description</h4>
-                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{selectedEvent.description}</p>
-                </div>
-              )}
             </div>
           )}
         </DialogContent>

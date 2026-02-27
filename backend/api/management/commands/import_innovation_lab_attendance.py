@@ -86,10 +86,13 @@ class Command(BaseCommand):
                         if not a_number_clean.startswith('A'):
                             a_number_clean = 'A' + a_number_clean
                         
-                        # Try to find by A-number in email field (assuming A-number is in email)
-                        students_by_email = Student.objects.filter(email__icontains=a_number_clean)
-                        if students_by_email.exists():
-                            student = students_by_email.first()
+                        # Try to find by A-number
+                        a_lower = a_number_clean.lower()
+                        students_by_anumber = Student.objects.filter(a_number__iexact=a_lower)
+                        if not students_by_anumber.exists():
+                            students_by_anumber = Student.objects.filter(a_number__icontains=a_lower)
+                        if students_by_anumber.exists():
+                            student = students_by_anumber.first()
                             match_method = f"A-number ({a_number_clean})"
                     
                     # If not found by A-number, try by first + last name

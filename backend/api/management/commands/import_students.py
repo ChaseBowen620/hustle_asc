@@ -1,7 +1,6 @@
 import csv
 import os
 from django.core.management.base import BaseCommand, CommandError
-from django.contrib.auth.models import User
 from api.models import Student
 
 
@@ -38,7 +37,6 @@ class Command(BaseCommand):
                     first_name = row.get('\ufefffirst_name', row.get('first_name', '')).strip()
                     last_name = row.get('last_name', '').strip()
                     email = row.get('email', '').strip()
-                    is_admin_str = row.get('is_admin', 'FALSE').strip().upper()
                     
                     # Validate required fields
                     if not first_name:
@@ -64,58 +62,21 @@ class Command(BaseCommand):
                             self.style.WARNING(f'Row {row_num}: Missing email, using default: "{email}"')
                         )
                     
-                    # Check if email already exists
-                    if Student.objects.filter(email=email).exists():
-                        self.stdout.write(
-                            self.style.WARNING(f'Row {row_num}: Email {email} already exists, skipping')
-                        )
-                        error_count += 1
-                        continue
-                    
-                    # Check if username already exists (for the user we're about to create)
-                    username = email.split('@')[0]  # Use part before @ as username
-                    original_username = username
+                    # Use email local part as A-number; ensure unique
+                    a_num = email.split('@')[0].lower()
+                    base_a_num = a_num
                     counter = 1
-                    
-                    # Ensure username is unique
-                    while User.objects.filter(username=username).exists():
-                        username = f"{original_username}_{counter}"
+                    while Student.objects.filter(a_number=a_num).exists():
+                        a_num = f"{base_a_num}_{counter}"
                         counter += 1
                     
-                    # Double-check that the final username doesn't conflict
-                    if User.objects.filter(username=username).exists():
-                        self.stdout.write(
-                            self.style.WARNING(f'Row {row_num}: Username {username} already exists, skipping')
-                        )
-                        error_count += 1
-                        continue
-                    
-                    # Parse admin status
-                    is_admin = is_admin_str in ['TRUE', '1', 'YES', 'Y']
-                    
-                    # Create dummy user (username already validated above)
-                    
-                    # Create user with dummy password
-                    user = User.objects.create_user(
-                        username=username,
-                        email=email,
-                        password='dummy_password_for_historical_data',  # Dummy password
-                        first_name=first_name,
-                        last_name=last_name,
-                        is_active=False  # Mark as inactive since it's historical data
-                    )
-                    
-                    # Create student profile
                     student = Student.objects.create(
-                        user=user,
                         first_name=first_name,
                         last_name=last_name,
-                        email=email,
-                        is_admin=is_admin
+                        a_number=a_num
                     )
-                    
                     imported_count += 1
-                    self.stdout.write(f'✓ Imported: {first_name} {last_name} ({email}) - Admin: {is_admin}')
+                    self.stdout.write(f'✓ Imported: {first_name} {last_name} ({email})')
                     
                 except Exception as e:
                     self.stdout.write(

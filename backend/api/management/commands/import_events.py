@@ -56,12 +56,10 @@ class Command(BaseCommand):
                         error_count += 1
                         continue
                     
-                    # Get event type (handle BOM in column name)
-                    event_type = row.get('\ufeffevent_type', row.get('event_type', 'General')).strip()
-                    if not event_type:
-                        event_type = 'General'  # Default value
-                    
-                    # Get other fields
+                    # Get organization from CSV (column may be event_type or organization)
+                    organization = row.get('organization', row.get('\ufeffevent_type', row.get('event_type', 'General'))).strip()
+                    if not organization:
+                        organization = 'General'
                     name = row.get('name', '').strip()
                     if not name:
                         self.stdout.write(
@@ -69,17 +67,10 @@ class Command(BaseCommand):
                         )
                         error_count += 1
                         continue
-                    
-                    description = row.get('description', '').strip() if row.get('description') else ''
-                    location = row.get('location', '').strip() if row.get('location') else 'TBD'  # Default location
-                    
-                    # Create the event
                     event = Event.objects.create(
-                        event_type=event_type,
+                        organization=organization,
                         name=name,
-                        description=description,
                         date=event_date,
-                        location=location
                     )
                     
                     imported_count += 1

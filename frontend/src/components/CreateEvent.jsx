@@ -80,7 +80,6 @@ function CreateEvent({ onCreateEvent, initialData }) {
     date: initialData ? "" : getNextHourInMountainTime(),
     is_recurring: false,
     recurrence_type: "none",
-    recurrence_end_date: "",
   })
   const [organizations, setOrganizations] = useState([])
   const [selectedOrganizations, setSelectedOrganizations] = useState([]) // Array of organization IDs
@@ -119,7 +118,6 @@ function CreateEvent({ onCreateEvent, initialData }) {
         date: initialData.date ? String(initialData.date).slice(0, 16) : "",
         is_recurring: initialData.is_recurring || false,
         recurrence_type: initialData.recurrence_type || "none",
-        recurrence_end_date: initialData.recurrence_end_date ? String(initialData.recurrence_end_date).slice(0, 16) : "",
       })
       if (initialData.event_organizations && initialData.event_organizations.length > 0) {
         const orgIds = initialData.event_organizations
@@ -146,22 +144,8 @@ function CreateEvent({ onCreateEvent, initialData }) {
   }
 
 
-  // End of year in MST for recurring events (YYYY-12-31T23:59:00)
-  const getEndOfYearMST = (dateString) => {
-    if (!dateString) return ""
-    const [datePart] = dateString.split('T')
-    const [year] = datePart.split('-').map(Number)
-    return `${year}-12-31T23:59:00`
-  }
-
   const handleSubmit = (e) => {
     e.preventDefault()
-    
-    let recurrenceEndDate = null
-    if (eventData.is_recurring && eventData.recurrence_type !== 'none') {
-      recurrenceEndDate = getEndOfYearMST(eventData.date)
-    }
-
     // Get primary organization ID if it exists
     const primaryOrg = organizations.find(org => (org.name || org) === eventData.organization)
     const primaryOrgId = primaryOrg?.id
@@ -186,11 +170,7 @@ function CreateEvent({ onCreateEvent, initialData }) {
     onCreateEvent({
       ...eventData,
       date: toMSTString(eventData.date),
-      recurrence_end_date: recurrenceEndDate,
       organizations: secondaryOrgIds,
-      event_type: "",
-      description: "",
-      location: "",
     })
     if (!initialData) {
       setEventData({ 
@@ -199,7 +179,6 @@ function CreateEvent({ onCreateEvent, initialData }) {
         date: getNextHourInMountainTime(),
         is_recurring: false,
         recurrence_type: "none",
-        recurrence_end_date: ""
       })
     }
   }

@@ -759,7 +759,7 @@ function AdminDashboardPage() {
                   <div>
                     <h4 className="font-semibold text-sm text-gray-600 mb-1">A-Number</h4>
                     <p className="text-sm text-gray-700">
-                      {selectedStudent.user?.username || selectedStudent.user?.a_number || selectedStudent.a_number || 'N/A'}
+                      {selectedStudent.a_number || 'N/A'}
                     </p>
                   </div>
 

@@ -1,23 +1,13 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
-    StudentViewSet, 
-    EventViewSet, 
+    StudentViewSet,
+    EventViewSet,
     AttendanceViewSet,
-    SemesterViewSet,
-    ProfessorViewSet,
-    ClassViewSet,
-    TeachingAssistantViewSet,
-    get_user_details,
-    change_password,
     total_students,
     participating_students,
     student_points,
     attendance_overview,
-    list_admin_users,
-    create_admin_user,
-    update_admin_user,
-    delete_admin_user,
     search_students,
     no_attendance_in_period,
     events_before,
@@ -25,9 +15,6 @@ from .views import (
     student_merge_duplicates,
     list_organizations,
     manage_organization,
-    add_pending_checkin,
-    remove_pending_checkin,
-    flush_pending_checkins,
 )
 from .debug_webhook_views import debug_webhook, debug_webhook_status
 from .onetap_webhook_handler import onetap_webhook_handler, onetap_webhook_status
@@ -36,10 +23,6 @@ router = DefaultRouter()
 router.register(r'students', StudentViewSet)
 router.register(r'events', EventViewSet)
 router.register(r'attendance', AttendanceViewSet)
-router.register(r'semesters', SemesterViewSet)
-router.register(r'professors', ProfessorViewSet)
-router.register(r'classes', ClassViewSet)
-router.register(r'teaching-assistants', TeachingAssistantViewSet)
 
 urlpatterns = [
     # Custom endpoints must come before router to avoid conflicts
@@ -51,15 +34,6 @@ urlpatterns = [
     path('students/points/', student_points, name='student-points'),
     path('events/before/', events_before, name='events-before'),
     path('attendance/overview/', attendance_overview, name='attendance-overview'),
-    path('attendance/pending/', add_pending_checkin, name='add-pending-checkin'),
-    path('attendance/pending/<str:temp_id>/', remove_pending_checkin, name='remove-pending-checkin'),
-    path('attendance/flush-pending/', flush_pending_checkins, name='flush-pending-checkins'),
-    path('user/me/', get_user_details, name='user-details'),
-    path('user/change-password/', change_password, name='change-password'),
-    path('admin-users/', list_admin_users, name='list-admin-users'),
-    path('admin-users/create/', create_admin_user, name='create-admin-user'),
-    path('admin-users/<int:admin_user_id>/update/', update_admin_user, name='update-admin-user'),
-    path('admin-users/<int:admin_user_id>/delete/', delete_admin_user, name='delete-admin-user'),
     path('students/search/', search_students, name='search-students'),
     path('organizations/', list_organizations, name='list-organizations'),
     path('organizations/<int:organization_id>/', manage_organization, name='manage-organization'),

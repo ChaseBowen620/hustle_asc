@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Student, Event, Attendance, Semester, Professor, Class, TeachingAssistant, EventOrganization
+from .models import Student, Event, Attendance, EventOrganization
 
 class StudentSerializer(serializers.ModelSerializer):
     total_points = serializers.IntegerField(read_only=True)
@@ -11,10 +11,10 @@ class StudentSerializer(serializers.ModelSerializer):
     
     def get_user(self, obj):
         return {
-            'id': obj.user.id,
-            'username': obj.user.username,
-            'first_name': obj.user.first_name,
-            'last_name': obj.user.last_name
+            'id': obj.id,
+            'username': obj.a_number or '',
+            'first_name': obj.first_name,
+            'last_name': obj.last_name
         }
 
 class EventOrganizationSerializer(serializers.ModelSerializer):
@@ -29,9 +29,6 @@ class EventSerializer(serializers.ModelSerializer):
     has_passed = serializers.BooleanField(read_only=True)
     attendance_count = serializers.SerializerMethodField()
     event_organizations = EventOrganizationSerializer(many=True, read_only=True)
-    event_type = serializers.CharField(required=False, allow_blank=True, default='')
-    description = serializers.CharField(required=False, allow_blank=True, default='')
-    location = serializers.CharField(required=False, allow_blank=True, default='')
 
     def get_attendance_count(self, obj):
         # Prefer annotated value from list queryset; fallback to relation count (reliable with pagination)
@@ -51,8 +48,8 @@ class EventSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
         fields = [
-            'id', 'name', 'organization', 'event_type', 'description', 'date', 'location', 'has_passed',
-            'is_recurring', 'recurrence_type', 'recurrence_end_date', 'parent_event',
+            'id', 'name', 'organization', 'date', 'has_passed',
+            'is_recurring', 'recurrence_type',
             'event_organizations', 'organizations', 'attendance_count'
         ]
     
@@ -138,10 +135,6 @@ class EventSerializer(serializers.ModelSerializer):
         
         organizations = validated_data.pop('organizations', None)
         
-        # If organization is being updated, also update event_type to match
-        if 'organization' in validated_data:
-            validated_data['event_type'] = validated_data['organization']
-        
         # Update event fields
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
@@ -191,67 +184,3 @@ class AttendanceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Attendance
         fields = '__all__'
-
-class SemesterSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Semester
-        fields = ['id', 'season', 'year', 'is_current']
-
-class ProfessorSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Professor
-        fields = ['id', 'first_name', 'last_name']
-
-class ClassSerializer(serializers.ModelSerializer):
-    professor = ProfessorSerializer()
-    semester = SemesterSerializer()
-
-    class Meta:
-        model = Class
-        fields = ['id', 'course_code', 'professor', 'semester']
-
-class ClassListSerializer(serializers.ModelSerializer):
-    professor = ProfessorSerializer(read_only=True)
-    semester = SemesterSerializer(read_only=True)
-    professor_id = serializers.PrimaryKeyRelatedField(
-        source='professor',
-        queryset=Professor.objects.all(),
-        write_only=True
-    )
-    semester_id = serializers.PrimaryKeyRelatedField(
-        source='semester',
-        queryset=Semester.objects.all(),
-        write_only=True
-    )
-
-    class Meta:
-        model = Class
-        fields = ['id', 'course_code', 'professor', 'semester', 'professor_id', 'semester_id']
-
-class TeachingAssistantSerializer(serializers.ModelSerializer):
-    student = StudentSerializer(read_only=True)
-    class_assigned = ClassSerializer(read_only=True)
-
-    class Meta:
-        model = TeachingAssistant
-        fields = ['id', 'student', 'class_assigned', 'points_awarded']
-
-# Serializers for creating/updating
-class ClassCreateSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Class
-        fields = ['id', 'course_code', 'professor', 'semester']
-        extra_kwargs = {
-            'professor': {'required': True},
-            'semester': {'required': True}
-        }
-
-class TeachingAssistantCreateSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = TeachingAssistant
-        fields = ['id', 'student', 'class_assigned']
-        extra_kwargs = {
-            'student': {'required': True},
-            'class_assigned': {'required': True}
-        }
-

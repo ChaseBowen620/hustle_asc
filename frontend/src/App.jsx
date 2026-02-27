@@ -1,98 +1,44 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom"
-import { useState, useEffect } from "react"
 import Layout from "./components/Layout"
 import Navbar from "./components/Navbar"
-import PublicNavbar from "./components/PublicNavbar"
 import EventsListPage from "@/pages/EventsListPage"
 import EventEditPage from "@/pages/EventEditPage"
 import CheckInPage from "@/pages/CheckInPage"
-import LoginPage from "./pages/LoginPage"
-import LandingPage from "./pages/LandingPage"
 import AboutPage from "./pages/AboutPage"
-import RegisterPage from "./pages/RegisterPage"
 import { Toaster } from "./components/ui/toaster"
-import { useAuth } from "@/hooks/useAuth"
-import StudentDashboard from "./pages/StudentDashboard"
 import AdminDashboardPage from "./pages/AdminDashboardPage"
-import SettingsPage from "./pages/SettingsPage"
+import AuditPage from "./pages/AuditPage"
 import PublicCheckInPage from "./pages/PublicCheckInPage"
 import GeneralCheckInPage from "./pages/GeneralCheckInPage"
 import ScanCheckInPage from "./pages/ScanCheckInPage"
 import { useLocation } from "react-router-dom"
 
-function PrivateRoute({ children }) {
-  const { user } = useAuth()
-  return user ? children : <Navigate to="/login" />
-}
-
 function AppContent() {
-  const { user } = useAuth()
   const location = useLocation()
   const isScanPage = location.pathname === "/scan" || location.pathname.startsWith("/scan/")
 
   return (
     <div>
-      {user && !isScanPage ? <Navbar /> : !user && !isScanPage ? <PublicNavbar /> : null}
+      {!isScanPage && <Navbar />}
       <Routes>
           <Route element={<Layout />}>
-            {/* Public routes */}
-            <Route 
-              path="/" 
-              element={
-                user ? (
-                  <Navigate to="/dashboard" replace />
-                ) : (
-                  <Navigate to="/login" replace />
-                )
-              } 
-            />
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/about" element={<AboutPage />} />
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
-            {/* Public scan page (QR destination) - no navbar */}
             <Route path="/scan" element={<ScanCheckInPage />} />
             <Route path="/scan/:organization" element={<ScanCheckInPage />} />
             <Route path="/check-in/public/:eventId" element={<PublicCheckInPage />} />
 
-            {/* Check-in: authenticated -> CheckInPage; unauthenticated -> GeneralCheckInPage */}
-            <Route
-              path="/check-in"
-              element={user ? <CheckInPage /> : <GeneralCheckInPage />}
-            />
-            <Route
-              path="/check-in/:eventId"
-              element={user ? <CheckInPage /> : <PublicCheckInPage />}
-            />
+            <Route path="/check-in" element={<CheckInPage />} />
+            <Route path="/check-in/:eventId" element={<CheckInPage />} />
 
-            {/* Dashboard - logged-in users see Admin dashboard (only login is /login) */}
-            <Route
-              path="/dashboard"
-              element={
-                <PrivateRoute>
-                  <AdminDashboardPage />
-                </PrivateRoute>
-              }
-            />
+            <Route path="/dashboard" element={<AdminDashboardPage />} />
+            <Route path="/audit" element={<AuditPage />} />
+            <Route path="/events" element={<EventsListPage />} />
+            <Route path="/events/:eventId/edit" element={<EventEditPage />} />
 
-            {/* Settings - available to all authenticated users */}
-            <Route
-              path="/settings"
-              element={
-                <PrivateRoute>
-                  <SettingsPage />
-                </PrivateRoute>
-              }
-            />
-
-            {/* Events - any logged-in user can manage events */}
-            <Route path="/events" element={<PrivateRoute><EventsListPage /></PrivateRoute>} />
-            <Route path="/events/:eventId/edit" element={<PrivateRoute><EventEditPage /></PrivateRoute>} />
-
-            {/* Public check-in (unauthenticated users only) */}
             <Route path="/check-in-guest" element={<GeneralCheckInPage />} />
           </Route>
 
-          {/* Catch all redirect */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       <Toaster />

@@ -76,7 +76,7 @@ function PublicCheckInPage() {
   })
 
   const filteredStudents = availableStudents.filter(student =>
-    `${student.first_name} ${student.last_name} ${student.email}`.toLowerCase().includes(searchTerm.toLowerCase())
+    `${student.first_name} ${student.last_name} ${student.a_number || ''}`.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
   const handleCheckIn = async (student) => {
@@ -133,10 +133,7 @@ function PublicCheckInPage() {
     }
   }
 
-  // Extract A-Number from email (assumes format: a12345678@usu.edu)
-  const getANumber = (email) => {
-    return email.split('@')[0].toUpperCase()
-  }
+  const displayANumber = (student) => (student.a_number || '').toUpperCase()
 
   if (isLoading) {
     return (
@@ -187,7 +184,6 @@ function PublicCheckInPage() {
             <p className="text-gray-600">
               {format(new Date(event.date), 'EEEE, MMMM d, yyyy')} at {format(new Date(event.date), 'h:mm a')}
             </p>
-            <p className="text-gray-500">{event.location}</p>
           </div>
         </div>
 
@@ -238,7 +234,7 @@ function PublicCheckInPage() {
                       {student.first_name} {student.last_name}
                     </TableCell>
                     <TableCell className="text-gray-600">
-                      {getANumber(student.email)}
+                      {displayANumber(student)}
                     </TableCell>
                     <TableCell>
                       <Button

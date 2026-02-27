@@ -7,8 +7,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework import status
-from django.contrib.auth.models import User
-from .models import Student, Event, Attendance, Semester, Organization, EventOrganization
+from .models import Student, Event, Attendance, Organization, EventOrganization
 from datetime import datetime
 import re
 
@@ -236,14 +235,12 @@ def process_onetap_checkin(participant_data, profile_data, list_data):
                 'student': {
                     'id': student.id,
                     'name': f"{student.first_name} {student.last_name}",
-                    'email': student.user.email,
-                    'a_number': a_number
+                    'a_number': getattr(student, 'a_number', '') or a_number
                 },
                 'event': {
                     'id': event.id,
                     'name': event.name,
                     'date': event.date.isoformat(),
-                    'location': event.location
                 },
                 'attendance': {
                     'id': attendance.id,
@@ -258,143 +255,44 @@ def process_onetap_checkin(participant_data, profile_data, list_data):
         raise
 
 def create_or_find_student(first_name, last_name, email, a_number, phone):
-    """Create or find a student based on OneTap profile data."""
-    
-    # Helper function to ensure student has a user
-    def ensure_student_has_user(student, email_handle):
-        """Ensure a student has a corresponding user. Create one if missing."""
-        # Check if user exists by checking user_id or trying to access user
-        user_exists = True
-        try:
-            # Check if user_id is None or if accessing user raises an exception
-            if hasattr(student, 'user_id') and student.user_id is None:
-                user_exists = False
-            else:
-                # Try to access the user to see if it exists
-                _ = student.user  # This will raise User.DoesNotExist if missing
-        except User.DoesNotExist:
-            user_exists = False
-        except AttributeError:
-            # Fallback: check user_id directly
-            user_exists = getattr(student, 'user_id', None) is not None
-        
-        if not user_exists:
-            # Student exists but has no user - create one
-            username = email_handle.lower()
-            
-            # Ensure username is unique
-            original_username = username
-            counter = 1
-            while User.objects.filter(username=username).exists():
-                username = f"{original_username}_{counter}"
-                counter += 1
-            
-            # Create user account with password "changeme!"
-            # Use the email parameter passed to the outer function
-            user = User.objects.create_user(
-                username=username,
-                email=email,  # Use email from outer function scope
-                password='changeme!',
-                first_name=student.first_name,
-                last_name=student.last_name,
-                is_active=True
-            )
-            
-            # Update student to link to the new user
-            student.user = user
-            student.save()
-            
-            logger.info(f"Created missing user for student {student.first_name} {student.last_name}: username={username}, email={user.email}")
-            return student
-        return student
-    
-    # Get username from email handle (part before @)
-    email_handle = email.split('@')[0] if '@' in email else email
-    
-    # Try to find existing student by email first (email is on the User model)
-    student = None
-    try:
-        student = Student.objects.get(user__email=email)
-        logger.info(f"Found existing student by email: {student.first_name} {student.last_name}")
-        # Ensure student has a user
-        student = ensure_student_has_user(student, email_handle)
-        return student
-    except Student.DoesNotExist:
-        pass
-    
-    # Try to find by A-number if provided
+    """Create or find a student based on OneTap profile data. Uses Student model only (a_number, no email)."""
+    a_number = (a_number or '').strip().lower() if a_number else ''
+    email_handle = (email or '').split('@')[0].lower() if email and '@' in email else 'student'
+
+    # Find by A-number
     if a_number:
-        try:
-            student = Student.objects.get(user__username=a_number.lower())
+        student = Student.objects.filter(a_number=a_number).first()
+        if student:
             logger.info(f"Found existing student by A-number: {student.first_name} {student.last_name}")
-            # Ensure student has a user
-            student = ensure_student_has_user(student, email_handle)
             return student
-        except Student.DoesNotExist:
-            pass
-    
-    # Try to find by name
+
+    # Find by name
     if first_name and last_name:
-        try:
-            student = Student.objects.get(
-                first_name__iexact=first_name,
-                last_name__iexact=last_name
-            )
+        student = Student.objects.filter(
+            first_name__iexact=first_name,
+            last_name__iexact=last_name
+        ).first()
+        if student:
             logger.info(f"Found existing student by name: {student.first_name} {student.last_name}")
-            # Ensure student has a user
-            student = ensure_student_has_user(student, email_handle)
+            if a_number and not student.a_number:
+                student.a_number = a_number
+                student.save(update_fields=['a_number'])
             return student
-        except Student.DoesNotExist:
-            pass
-    
-    # Create new student - use email handle for username
-    username = email_handle.lower()
-    
-    # Ensure username is unique
-    original_username = username
+
+    # Create new student
+    anum = a_number if a_number else email_handle
+    base_anum = anum
     counter = 1
-    while User.objects.filter(username=username).exists():
-        username = f"{original_username}_{counter}"
+    while Student.objects.filter(a_number=anum).exists():
+        anum = f"{base_anum}_{counter}"
         counter += 1
-    
-    # Check if user already exists (additional safety check)
-    if User.objects.filter(email=email).exists():
-        user = User.objects.get(email=email)
-        logger.info(f"Found existing user by email: {user.username}")
-        # Check if student profile already exists for this user (post_save signal may have created it)
-        if Student.objects.filter(user=user).exists():
-            student = Student.objects.get(user=user)
-            logger.info(f"Found existing student profile for user: {student.first_name} {student.last_name}")
-            return student
-        # User exists but no student (e.g. created before signal) — create student
-        student = Student.objects.create(
-            user=user,
-            first_name=first_name,
-            last_name=last_name,
-            username=username
-        )
-        logger.info(f"Created new student for existing user: {student.first_name} {student.last_name} ({email})")
-        return student
-    
-    # Create user account (password "changeme!"); post_save signal usually creates Student automatically
-    user = User.objects.create_user(
-        username=username,
-        email=email,
-        password='changeme!',
-        first_name=first_name,
-        last_name=last_name,
-        is_active=True
+
+    student = Student.objects.create(
+        first_name=first_name or '',
+        last_name=last_name or '',
+        a_number=anum
     )
-    logger.info(f"Created new user: {user.username}")
-    # Get the Student created by signal, or create if signal didn't run (e.g. in tests)
-    student, created = Student.objects.get_or_create(
-        user=user,
-        defaults={'first_name': first_name, 'last_name': last_name, 'username': username}
-    )
-    if created:
-        logger.info(f"Created new student (no signal): {student.first_name} {student.last_name} ({email})")
-    else:
-        logger.info(f"Using signal-created student: {student.first_name} {student.last_name} ({email})")
+    logger.info(f"Created new student: {student.first_name} {student.last_name} (A-number: {anum})")
     return student
 
 def create_or_find_event(event_name, event_date, event_description, primary_org_name=None, secondary_org_names=None):
@@ -417,7 +315,6 @@ def create_or_find_event(event_name, event_date, event_description, primary_org_
         logger.info(f"Found existing event: {event.name} on {event.date}")
         if event.organization != primary_org_name:
             event.organization = primary_org_name
-            event.event_type = primary_org_name
             event.save()
             logger.info(f"Updated event organization to: {primary_org_name}")
         # Replace secondaries
@@ -437,22 +334,10 @@ def create_or_find_event(event_name, event_date, event_description, primary_org_
     logger.info(f"Processing event name: '{event_name}'")
     logger.info(f"Primary organization: {primary_org_name}, secondaries: {secondary_org_names}")
     
-    current_semester = Semester.objects.filter(is_current=True).first()
-    if not current_semester:
-        current_semester = Semester.objects.create(
-            name="Current Semester",
-            start_date=datetime.now().date(),
-            end_date=datetime.now().date(),
-            is_current=True
-        )
-    
     event = Event.objects.create(
         name=event_name,
         date=event_date,
         organization=primary_org_name,
-        event_type=primary_org_name,
-        description=event_description,
-        location='ASC Space'
     )
     
     for name in secondary_org_names:

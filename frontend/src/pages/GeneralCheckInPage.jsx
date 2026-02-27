@@ -156,9 +156,9 @@ function GeneralCheckInPage() {
     const normalizedInput = aNumberInput.trim().toUpperCase().replace(/\s+/g, '')
     
     return students.find(student => {
-      // Check username (which is typically the A-number)
-      const username = (student.username || '').toUpperCase().replace(/\s+/g, '')
-      if (username === normalizedInput) return true
+      // Check A-number
+      const aNum = (student.a_number || '').toUpperCase().replace(/\s+/g, '')
+      if (aNum === normalizedInput) return true
       
       return false
     })
@@ -433,7 +433,6 @@ function GeneralCheckInPage() {
             <p className="text-gray-600">
               {format(new Date(closestEvent.date), 'EEEE, MMMM d, yyyy')} at {format(new Date(closestEvent.date), 'h:mm a')}
             </p>
-            <p className="text-gray-500">{closestEvent.location}</p>
           </div>
         </div>
 
@@ -566,7 +565,7 @@ function GeneralCheckInPage() {
                     <div>
                       <h4 className="font-medium text-gray-900">{event.name}</h4>
                       <p className="text-sm text-gray-600">
-                        {format(new Date(event.date), 'h:mm a')} • {event.location}
+                        {format(new Date(event.date), 'h:mm a')}
                       </p>
                     </div>
                     <div className="flex items-center space-x-2">

@@ -4,7 +4,6 @@ Used by the merge_duplicate_students management command and the /api/students/du
 """
 import re
 from collections import defaultdict
-from django.contrib.auth.models import User
 from api.models import Student, Attendance
 
 A_NUMBER_PATTERN = re.compile(r'^a\d{8}$')
@@ -26,23 +25,12 @@ def norm_a_number(username):
 
 
 def has_a_number_username(student):
-    u = norm(student.user.username or student.username or '')
+    u = norm(getattr(student, 'a_number', '') or '')
     return bool(A_NUMBER_PATTERN.match(u))
 
 
-def has_a_number_email(student):
-    e = norm(student.user.email or '')
-    if not e or '@' not in e:
-        return False
-    local = e.split('@')[0]
-    domain = e.split('@')[1]
-    if domain not in ('usu.edu', 'aggies.usu.edu'):
-        return False
-    return bool(re.match(r'^a?\d{8}$', local))
-
-
 def has_a_number_or_a_number_email(student):
-    return has_a_number_username(student) or has_a_number_email(student)
+    return has_a_number_username(student)
 
 
 def attendance_count(student):
@@ -65,13 +53,11 @@ def pick_canonical(students, prefer_a_number=True):
 
 
 def _student_to_dict(s):
-    user = getattr(s, 'user', None)
     return {
         'id': s.id,
         'first_name': s.first_name or '',
         'last_name': s.last_name or '',
-        'email': (user.email if user else '') or '',
-        'username': (user.username if user else '') or (getattr(s, 'username', '') or ''),
+        'a_number': getattr(s, 'a_number', '') or '',
         'attendance_count': attendance_count(s),
     }
 
@@ -83,15 +69,13 @@ def get_duplicate_groups():
     Returns empty list on any error so the UI can show "no duplicates" instead of failing.
     """
     try:
-        students = list(Student.objects.select_related('user').all())
+        students = list(Student.objects.all())
     except Exception:
         return []
     by_a_number = defaultdict(list)
     by_name = defaultdict(list)
     for s in students:
-        if getattr(s, 'user', None) is None:
-            continue
-        a = norm_a_number(s.user.username or getattr(s, 'username', ''))
+        a = norm_a_number(getattr(s, 'a_number', '') or '')
         if a:
             by_a_number[a].append(s)
         fn, ln = norm(s.first_name), norm(s.last_name)
@@ -122,7 +106,7 @@ def get_duplicate_groups():
     for (fn, ln), grp in sorted(by_name2.items(), key=lambda x: (x[0][1], x[0][0])):
         if len(grp) < 2:
             continue
-        a_nums = [norm_a_number(s.user.username or s.username) for s in grp]
+        a_nums = [norm_a_number(getattr(s, 'a_number', '') or '') for s in grp]
         if len(set(a_nums)) == 1 and a_nums[0]:
             continue
         canonical = pick_canonical(grp, prefer_a_number=True)
@@ -147,11 +131,11 @@ def run_merge(dry_run=False, log=None):
         if log is not None:
             log.append(msg)
 
-    students = list(Student.objects.select_related('user').all())
+    students = list(Student.objects.all())
     by_a_number = defaultdict(list)
     by_name = defaultdict(list)
     for s in students:
-        a = norm_a_number(s.user.username or s.username)
+        a = norm_a_number(getattr(s, 'a_number', '') or '')
         if a:
             by_a_number[a].append(s)
         fn, ln = norm(s.first_name), norm(s.last_name)
@@ -185,7 +169,7 @@ def run_merge(dry_run=False, log=None):
     for (fn, ln), grp in sorted(by_name2.items(), key=lambda x: (x[0][1], x[0][0])):
         if len(grp) < 2:
             continue
-        a_nums = [norm_a_number(s.user.username or s.username) for s in grp]
+        a_nums = [norm_a_number(getattr(s, 'a_number', '') or '') for s in grp]
         if len(set(a_nums)) == 1 and a_nums[0]:
             continue
         grp = [s for s in grp if s.id not in merged_ids]
@@ -227,8 +211,5 @@ def _merge_into(duplicate_student, canonical_student, dry_run, write):
                 att.save()
                 canonical_event_ids.add(att.event_id)
                 moved += 1
-        canonical_student.update_attendance_cache()
-        user_id = duplicate_student.user_id
         duplicate_student.delete()
-        User.objects.filter(id=user_id).delete()
     write(f'Moved {moved} attendances, removed {deleted_dup} duplicate(s)')
