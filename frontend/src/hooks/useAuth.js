@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { API_URL } from '@/config/api'
 
 const AUTH_STORAGE_KEY = 'auth_user'
 
@@ -14,18 +15,23 @@ const getStoredUser = () => {
 const useAuth = create((set) => ({
   user: getStoredUser(),
   login: async (username, password) => {
-    const envUser = import.meta.env.VITE_LOGIN_USERNAME ?? ''
-    const envPass = import.meta.env.VITE_LOGIN_PASSWORD ?? ''
-    const ok =
-      String(username).trim() === String(envUser).trim() &&
-      String(password) === String(envPass)
-    if (!ok) {
-      return { success: false, error: 'Invalid username or password.' }
+    try {
+      const res = await fetch(`${API_URL}/api/auth/login/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: username.trim(), password }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        return { success: false, error: data.error || 'Invalid username or password.' }
+      }
+      const user = { token: data.access, refresh: data.refresh }
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user))
+      set({ user })
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: 'Unable to reach the server. Please try again.' }
     }
-    const user = { token: 'authenticated' }
-    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user))
-    set({ user })
-    return { success: true }
   },
   logout: () => {
     localStorage.removeItem(AUTH_STORAGE_KEY)

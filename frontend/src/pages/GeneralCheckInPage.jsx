@@ -7,10 +7,12 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { CheckCircle, XCircle, ArrowLeft, Clock } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { useAuth } from "@/hooks/useAuth"
 import { API_URL } from '@/config/api'
 
 function GeneralCheckInPage() {
   const navigate = useNavigate()
+  const { user } = useAuth()
   const { organization } = useParams()
   const [events, setEvents] = useState([])
   const [closestEvent, setClosestEvent] = useState(null)
@@ -295,12 +297,15 @@ function GeneralCheckInPage() {
       const normalizedANumber = aNumber.trim().toLowerCase().replace(/\s+/g, '')
       
       // Create user account
-      const registerResponse = await axios.post(`${API_URL}/api/register/`, {
-        first_name: newUserData.first_name.trim(),
-        last_name: newUserData.last_name.trim(),
-        a_number: normalizedANumber,
-        password: "changeme!" // Default password
-      })
+      const registerResponse = await axios.post(
+        `${API_URL}/api/register/`,
+        {
+          first_name: newUserData.first_name.trim(),
+          last_name: newUserData.last_name.trim(),
+          a_number: normalizedANumber,
+        },
+        { headers: user?.token ? { Authorization: `Bearer ${user.token}` } : {} }
+      )
 
       if (registerResponse.status === 201 || registerResponse.status === 200) {
         // Refresh students list to get the new student

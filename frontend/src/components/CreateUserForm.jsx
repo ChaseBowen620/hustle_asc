@@ -10,10 +10,13 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
+import { useAuth } from "@/hooks/useAuth"
 import { API_URL } from '@/config/api'
 import { UserPlus } from "lucide-react"
 
 function CreateUserForm({ onUserCreated, queueMode, onQueueSubmit, eventId, eventDate }) {
+  const { user } = useAuth()
+  const authHeaders = user?.token ? { Authorization: `Bearer ${user.token}` } : {}
   const [isOpen, setIsOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [aNumberExists, setANumberExists] = useState(false)
@@ -88,7 +91,9 @@ function CreateUserForm({ onUserCreated, queueMode, onQueueSubmit, eventId, even
       return false
     }
     try {
-      const res = await fetch(`${API_URL}/api/register/check-a-number/?a_number=${encodeURIComponent(normalized)}`)
+      const res = await fetch(`${API_URL}/api/register/check-a-number/?a_number=${encodeURIComponent(normalized)}`, {
+        headers: { ...authHeaders },
+      })
       const data = await res.json()
       setANumberExists(!!data.exists)
       return !!data.exists
@@ -136,6 +141,7 @@ function CreateUserForm({ onUserCreated, queueMode, onQueueSubmit, eventId, even
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...authHeaders,
         },
         body: JSON.stringify(formData)
       })

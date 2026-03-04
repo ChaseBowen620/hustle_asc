@@ -136,7 +136,7 @@ function CheckInPage() {
             last_name: data.last_name,
             a_number: data.a_number,
           },
-          { headers: { "Content-Type": "application/json" } }
+          { headers: { "Content-Type": "application/json", ...(user?.token && { Authorization: `Bearer ${user.token}` }) } }
         )
         const studentId = regRes.data.student_id
         if (studentId == null) {

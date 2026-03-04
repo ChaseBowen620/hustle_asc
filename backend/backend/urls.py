@@ -16,12 +16,13 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
-from api.views import register_student, check_a_number, robots_txt
+from api.views import register_student, check_a_number, robots_txt, auth_login
 
 urlpatterns = [
     path('robots.txt', robots_txt),
     path('admin/', admin.site.urls),
     path('api/', include('api.urls')),
+    path('api/auth/login/', auth_login, name='auth-login'),
     path('api/register/', register_student, name='register-student'),
     path('api/register/check-a-number/', check_a_number, name='check-a-number'),
     path('api-auth/', include('rest_framework.urls', namespace='rest_framework')),

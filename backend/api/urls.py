@@ -15,6 +15,10 @@ from .views import (
     student_merge_duplicates,
     list_organizations,
     manage_organization,
+    public_scan_csrf_cookie,
+    public_scan_events,
+    public_scan_student_lookup,
+    public_scan_checkin,
 )
 from .debug_webhook_views import debug_webhook, debug_webhook_status
 from .onetap_webhook_handler import onetap_webhook_handler, onetap_webhook_status
@@ -37,6 +41,11 @@ urlpatterns = [
     path('students/search/', search_students, name='search-students'),
     path('organizations/', list_organizations, name='list-organizations'),
     path('organizations/<int:organization_id>/', manage_organization, name='manage-organization'),
+    # Public scan (QR check-in; no auth)
+    path('public/scan/csrf/', public_scan_csrf_cookie, name='public-scan-csrf'),
+    path('public/scan/events/', public_scan_events, name='public-scan-events'),
+    path('public/scan/student/', public_scan_student_lookup, name='public-scan-student'),
+    path('public/scan/checkin/', public_scan_checkin, name='public-scan-checkin'),
     path('', include(router.urls)),
     
     # Debug webhook endpoint (temporary - for diagnosing OneTap issues)

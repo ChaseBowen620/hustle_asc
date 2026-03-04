@@ -12,7 +12,7 @@ def robots_txt(request):
     return HttpResponse("\n".join(lines), content_type="text/plain")
 
 from rest_framework import viewsets, status
-from rest_framework.decorators import action, api_view, authentication_classes, permission_classes
+from rest_framework.decorators import action, api_view, authentication_classes, permission_classes, throttle_classes
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 from django.utils import timezone
@@ -22,8 +22,154 @@ from .serializers import (
     EventSerializer, 
     AttendanceSerializer,
 )
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.throttling import AnonRateThrottle
+from django.conf import settings
+from django.views.decorators.csrf import ensure_csrf_cookie
+from django.views.decorators.http import require_GET
+from api.permissions import AllowAnyWithCSRFForUnsafe
+from django.contrib.auth import get_user_model
+from rest_framework_simplejwt.tokens import RefreshToken
+from zoneinfo import ZoneInfo
+import os
 import re
+
+User = get_user_model()
+
+
+def _request_from_app_origin(request):
+    """
+    Require request to come from a trusted app origin (blocks direct curl/script access).
+    Uses CSRF_TRUSTED_ORIGINS; requests without a matching Origin or Referer get 403.
+    """
+    origin = request.META.get("HTTP_ORIGIN", "").strip()
+    referer = request.META.get("HTTP_REFERER", "").strip()
+    allowed = getattr(settings, "CSRF_TRUSTED_ORIGINS", [])
+    if not allowed:
+        return True  # no restriction if not configured
+    for base in allowed:
+        if origin and origin.rstrip("/") == base.rstrip("/"):
+            return True
+        if referer and referer.startswith(base):
+            return True
+    # Allow same-origin (no Origin set) when Referer is from allowed origin
+    if not origin and referer:
+        for base in allowed:
+            if referer.startswith(base):
+                return True
+    return False
+
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def auth_login(request):
+    """
+    Issue JWT tokens for dashboard login. Credentials are validated against
+    DASHBOARD_USERNAME and DASHBOARD_PASSWORD (set same as frontend VITE_LOGIN_* in backend .env).
+    """
+    username = (request.data.get('username') or '').strip()
+    password = request.data.get('password') or ''
+    env_user = (os.environ.get('DASHBOARD_USERNAME') or '').strip()
+    env_pass = os.environ.get('DASHBOARD_PASSWORD') or ''
+    if not username or not env_user or username != env_user or password != env_pass:
+        return Response(
+            {'error': 'Invalid username or password.'},
+            status=status.HTTP_401_UNAUTHORIZED,
+        )
+    user, created = User.objects.get_or_create(
+        username=env_user,
+        defaults={'is_staff': False, 'is_active': True},
+    )
+    if created:
+        user.set_unusable_password()
+        user.save()
+    refresh = RefreshToken.for_user(user)
+    return Response({
+        'access': str(refresh.access_token),
+        'refresh': str(refresh),
+    })
+
+
+# ----- Public scan endpoints (QR code check-in; no login required) -----
+
+@require_GET
+@ensure_csrf_cookie
+def public_scan_csrf_cookie(request):
+    """Set the CSRF cookie so the frontend can send X-CSRFToken on POST. Call once when loading the scan page."""
+    return HttpResponse("ok", content_type="text/plain")
+
+
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def public_scan_events(request):
+    """Return today's events (America/Denver) for the /scan page. Optional ?organization=Name filter."""
+    today_denver = datetime.now(ZoneInfo("America/Denver")).date()
+    qs = Event.objects.filter(date__date=today_denver).order_by('date')
+    org = (request.GET.get('organization') or '').strip()
+    if org:
+        qs = qs.filter(
+            Q(organization__icontains=org) |
+            Q(event_organizations__organization__name__icontains=org)
+        ).distinct()
+    serializer = EventSerializer(qs, many=True)
+    return Response(serializer.data)
+
+
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def public_scan_student_lookup(request):
+    """Look up a single student by A-number. For scan page only; does not expose full student list."""
+    a_number = (request.GET.get('a_number') or '').strip().lower()
+    if not re.match(r'^a\d{8}$', a_number):
+        return Response({'found': False, 'error': 'Invalid A-number format'}, status=status.HTTP_400_BAD_REQUEST)
+    student = Student.objects.filter(a_number=a_number).first()
+    if not student:
+        return Response({'found': False})
+    return Response({
+        'found': True,
+        'student': {
+            'id': student.id,
+            'first_name': student.first_name,
+            'last_name': student.last_name,
+            'a_number': student.a_number or '',
+        },
+    })
+
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([AllowAnyWithCSRFForUnsafe])
+@throttle_classes([AnonRateThrottle])
+def public_scan_checkin(request):
+    """Create a single attendance record. For scan page only; requires CSRF + rate limit."""
+    student_id = request.data.get('student')
+    event_id = request.data.get('event')
+    if not student_id or not event_id:
+        return Response(
+            {'error': 'Both student and event are required'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    try:
+        student = Student.objects.get(id=student_id)
+    except Student.DoesNotExist:
+        return Response({'error': 'Student not found'}, status=status.HTTP_404_NOT_FOUND)
+    try:
+        event = Event.objects.get(id=event_id)
+    except Event.DoesNotExist:
+        return Response({'error': 'Event not found'}, status=status.HTTP_404_NOT_FOUND)
+    if Attendance.objects.filter(student_id=student_id, event_id=event_id).exists():
+        return Response(
+            {'error': 'Student already checked in'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    attendance = Attendance.objects.create(student_id=student_id, event_id=event_id)
+    get_or_create_next_occurrence(event)
+    return Response(AttendanceSerializer(attendance).data, status=status.HTTP_201_CREATED)
+
+
 from django.db.models import Count, Sum
 from django.db import models
 from django.db.models import Q
@@ -34,8 +180,7 @@ import calendar
 class StudentViewSet(viewsets.ModelViewSet):
     queryset = Student.objects.all().order_by('first_name', 'last_name')
     serializer_class = StudentSerializer
-    permission_classes = [AllowAny]  # Make read operations public
-    authentication_classes = []  # No JWT; avoid 401 on invalid/expired token (e.g. Settings delete)
+    permission_classes = [IsAuthenticated]
 
     def list(self, request):
         queryset = self.get_queryset()
@@ -60,8 +205,7 @@ class EventListPagination(PageNumberPagination):
 class EventViewSet(viewsets.ModelViewSet):
     queryset = Event.objects.all()
     serializer_class = EventSerializer
-    permission_classes = [AllowAny]  # Make read operations public
-    authentication_classes = []  # No JWT; avoid 401 on invalid/expired token (e.g. Settings delete)
+    permission_classes = [IsAuthenticated]
     pagination_class = EventListPagination
 
     def get_queryset(self):
@@ -113,7 +257,7 @@ class EventViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(past_events, many=True)
         return Response(serializer.data)
 
-    @action(detail=False, methods=['get'], permission_classes=[AllowAny])
+    @action(detail=False, methods=['get'])
     def organizations(self, request):
         """
         Get all organizations from the Organization table.
@@ -213,8 +357,7 @@ def get_or_create_next_occurrence(event):
 class AttendanceViewSet(viewsets.ModelViewSet):
     queryset = Attendance.objects.select_related('student', 'event').all()
     serializer_class = AttendanceSerializer
-    permission_classes = [AllowAny]
-    authentication_classes = []
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         """Filter attendance by organization based on admin role; optional filter by event id (?event=)."""
@@ -261,6 +404,9 @@ class AttendanceViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_404_NOT_FOUND
                 )
             
+            # No server-side date restriction: allow check-in for any event (e.g. late logging).
+            # Date filtering is display-only on /scan and /checkin (today's events shown by default).
+
             # Check for existing attendance
             if Attendance.objects.filter(student_id=student_id, event_id=event_id).exists():
                 return Response(
@@ -291,7 +437,8 @@ class AttendanceViewSet(viewsets.ModelViewSet):
 
 @api_view(['POST'])
 @authentication_classes([])
-@permission_classes([AllowAny])
+@permission_classes([AllowAnyWithCSRFForUnsafe])
+@throttle_classes([AnonRateThrottle])
 def register_student(request):
     try:
         # Get A-number from request (can be passed as 'a_number' or 'email' for backwards compatibility)
@@ -352,8 +499,7 @@ def check_a_number(request):
 
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def total_students(request):
     organization_filter = request.GET.get('organization', None)
     if organization_filter:
@@ -367,8 +513,7 @@ def total_students(request):
     return Response({'count': count})
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def participating_students(request):
     filter_type = request.GET.get('filter', 'semester')
     organization_filter = request.GET.get('organization', None)
@@ -412,8 +557,7 @@ def participating_students(request):
     return Response({'count': count})
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def student_points(request):
     filter_type = request.GET.get('filter', 'semester')
     organization_filter = request.GET.get('organization', None)
@@ -503,8 +647,7 @@ def student_points(request):
     return Response(data)
 
 @api_view(['GET'])
-@authentication_classes([])  # avoid 401 on invalid/expired JWT; this endpoint is AllowAny
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def no_attendance_in_period(request):
     """Return students with zero attendances where event.date is in [start, end]. Query: start=YYYY-MM-DD&end=YYYY-MM-DD or academic_year=YYYY (past year Aug 1–April 30)."""
     start_param = request.GET.get('start')
@@ -533,8 +676,7 @@ def no_attendance_in_period(request):
 
 
 @api_view(['GET'])
-@authentication_classes([])  # avoid 401 on invalid/expired JWT; this endpoint is AllowAny
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def events_before(request):
     """Return events with date < before. Query: before=YYYY-MM-DD."""
     before_param = request.GET.get('before')
@@ -550,8 +692,7 @@ def events_before(request):
 
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def student_duplicates(request):
     """GET: return list of duplicate student groups (same A-number or same name) for Settings UI. Never 500s; returns empty list on error."""
     try:
@@ -563,8 +704,7 @@ def student_duplicates(request):
 
 
 @api_view(['POST'])
-@authentication_classes([])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def student_merge_duplicates(request):
     """POST: run merge of duplicate students. Returns { groups_processed, accounts_merged }."""
     from api.duplicate_students import run_merge
@@ -597,8 +737,7 @@ def _get_or_create_student_by_a_number(first_name, last_name, a_number):
 
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def search_students(request):
     """Search for students by name, email, or A-number."""
     query = request.GET.get('q', '').strip()
@@ -628,8 +767,7 @@ def search_students(request):
     return Response(students_data)
 
 @api_view(['GET', 'POST'])
-@authentication_classes([])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def list_organizations(request):
     """List all organizations or create a new one. No permission check."""
     from .models import Organization
@@ -679,8 +817,7 @@ def update_events_organization_name(old_name, new_name):
 
 
 @api_view(['PUT', 'PATCH', 'DELETE'])
-@authentication_classes([])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def manage_organization(request, organization_id):
     """Update or delete an organization. No permission check."""
     from .models import Organization
@@ -726,8 +863,7 @@ def manage_organization(request, organization_id):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def attendance_overview(request):
     attendance_query = Attendance.objects.all()
     attendance_data = attendance_query.annotate(

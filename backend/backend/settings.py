@@ -152,7 +152,13 @@ CORS_ALLOW_HEADERS = [
     'x-csrftoken',
     'x-requested-with',
 ]
-CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in os.environ.get('CSRF_TRUSTED_ORIGINS', 'https://hustledashboard.com,http://localhost:3000,http://52.8.4.183:3000').split(',')]
+
+# CSRF trusted origins (override with env CSRF_TRUSTED_ORIGINS, comma-separated)
+CSRF_TRUSTED_ORIGINS = [
+    o.strip()
+    for o in os.environ.get('CSRF_TRUSTED_ORIGINS', 'https://hustledashboard.com').split(',')
+    if o.strip()
+]
 
 # Trust proxy headers from nginx
 USE_X_FORWARDED_HOST = True
@@ -164,6 +170,10 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
+    # Rate limit for public scan (register + check-in); anon only, not logged-in users
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '20/minute',
+    },
 }
 
 SIMPLE_JWT = {

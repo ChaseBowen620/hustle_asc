@@ -1,0 +1,30 @@
+# Cloudflare Tunnel config for hustledashboard.com
+# Routes: hustledashboard.com -> frontend (3000), /api, /admin, /static -> backend (8000)
+#
+# Before using:
+# 1. Install cloudflared: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
+# 2. Run: cloudflared tunnel login
+# 3. Run: cloudflared tunnel create hustle-asc   (or use existing tunnel ID)
+# 4. Run: cloudflared tunnel route dns <TUNNEL_NAME_OR_ID> hustledashboard.com
+# 5. Put credentials file at ~/.cloudflared/<TUNNEL_ID>.json
+# 6. Replace the tunnel: and credentials-file: values below with your tunnel ID and path
+#
+tunnel: REPLACE_WITH_YOUR_TUNNEL_ID
+credentials-file: REPLACE_WITH_PATH_TO_CREDENTIALS_JSON
+
+ingress:
+  # Django API and admin (must come before catch-all)
+  - hostname: hustledashboard.com
+    path: ^/api
+    service: http://localhost:8000
+  - hostname: hustledashboard.com
+    path: ^/admin
+    service: http://localhost:8000
+  - hostname: hustledashboard.com
+    path: ^/static
+    service: http://localhost:8000
+  # Frontend (Vite dev server on port 3000)
+  - hostname: hustledashboard.com
+    service: http://localhost:3000
+  # Catch-all (required)
+  - service: http_status:404

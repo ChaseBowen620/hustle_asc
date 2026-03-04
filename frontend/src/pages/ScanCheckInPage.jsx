@@ -4,12 +4,14 @@ import axios from "axios"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
+import { useAuth } from "@/hooks/useAuth"
 import { API_URL } from "@/config/api"
 import { isEventTodayMST, formatMSTDateString } from "@/utils/mstDate"
 import CheckInStudents from "@/components/CheckInStudents"
 
 function ScanCheckInPage() {
   const { organization } = useParams()
+  const { user } = useAuth()
   const [events, setEvents] = useState([])
   const [students, setStudents] = useState([])
   const [attendances, setAttendances] = useState([])
@@ -20,49 +22,64 @@ function ScanCheckInPage() {
 
   const fetchEvents = useCallback(async () => {
     try {
-      const response = await axios.get(`${API_URL}/api/events/?page_size=500`)
-      const data = response.data
-      let all = data.results ?? data ?? []
-      if (organization) {
-        const orgSlug = organization.toUpperCase().replace(/\s+/g, "")
-        all = all.filter((event) => {
-          const eventOrg = (event.organization || "").toUpperCase().replace(/\s+/g, "")
-          if (eventOrg === orgSlug) return true
-          if (event.event_organizations && Array.isArray(event.event_organizations)) {
-            return event.event_organizations.some((eo) => {
-              const name = (eo.organization_name || eo.organization || "").toUpperCase().replace(/\s+/g, "")
-              return name === orgSlug
-            })
-          }
-          return false
-        })
+      if (user?.token) {
+        const response = await axios.get(`${API_URL}/api/events/?page_size=500`)
+        const data = response.data
+        let all = data.results ?? data ?? []
+        if (organization) {
+          const orgSlug = organization.toUpperCase().replace(/\s+/g, "")
+          all = all.filter((event) => {
+            const eventOrg = (event.organization || "").toUpperCase().replace(/\s+/g, "")
+            if (eventOrg === orgSlug) return true
+            if (event.event_organizations && Array.isArray(event.event_organizations)) {
+              return event.event_organizations.some((eo) => {
+                const name = (eo.organization_name || eo.organization || "").toUpperCase().replace(/\s+/g, "")
+                return name === orgSlug
+              })
+            }
+            return false
+          })
+        }
+        setEvents(all)
+      } else {
+        const url = `${API_URL}/api/public/scan/events/${organization ? `?organization=${encodeURIComponent(organization)}` : ""}`
+        const response = await axios.get(url)
+        setEvents(Array.isArray(response.data) ? response.data : [])
       }
-      setEvents(all)
     } catch (e) {
       console.error("Error fetching events:", e)
       toast({ title: "Error", description: "Could not load events", variant: "destructive" })
     } finally {
       setLoading(false)
     }
-  }, [organization, toast])
+  }, [organization, toast, user?.token])
 
   const fetchStudents = useCallback(async () => {
+    if (!user?.token) return
     try {
       const response = await axios.get(`${API_URL}/api/students/`)
       setStudents(Array.isArray(response.data) ? response.data : response.data?.results ?? [])
     } catch (e) {
       console.error("Error fetching students:", e)
     }
-  }, [])
+  }, [user?.token])
 
   const fetchAttendances = useCallback(async () => {
+    if (!user?.token) return
     try {
       const response = await axios.get(`${API_URL}/api/attendance/`)
       setAttendances(response.data)
     } catch (e) {
       console.error("Error fetching attendances:", e)
     }
-  }, [])
+  }, [user?.token])
+
+  // When not logged in, get CSRF cookie so register/check-in POSTs are accepted (anti-spam)
+  useEffect(() => {
+    if (!user?.token) {
+      axios.get(`${API_URL}/api/public/scan/csrf/`, { withCredentials: true }).catch(() => {})
+    }
+  }, [user?.token])
 
   useEffect(() => {
     fetchEvents()
@@ -70,8 +87,8 @@ function ScanCheckInPage() {
   }, [fetchEvents, fetchStudents])
 
   useEffect(() => {
-    if (selectedEvent) fetchAttendances()
-  }, [selectedEvent, fetchAttendances])
+    if (user?.token && selectedEvent) fetchAttendances()
+  }, [user?.token, selectedEvent, fetchAttendances])
 
   const todayEvents = events
     .filter((e) => isEventTodayMST(e.date))
@@ -94,16 +111,23 @@ function ScanCheckInPage() {
       if (!effectiveEvent) return
       setCheckingIn(true)
       try {
-        await axios.post(`${API_URL}/api/attendance/`, {
-          student: student.id,
-          event: effectiveEvent.id,
-        })
+        if (user?.token) {
+          await axios.post(`${API_URL}/api/attendance/`, {
+            student: student.id,
+            event: effectiveEvent.id,
+          })
+        } else {
+          await axios.post(`${API_URL}/api/public/scan/checkin/`, {
+            student: student.id,
+            event: effectiveEvent.id,
+          })
+        }
         toast({
           title: "Checked in",
           description: `${student.first_name} ${student.last_name} has been checked in.`,
           className: "bg-green-50 border-green-200 text-black",
         })
-        fetchAttendances()
+        if (user?.token) fetchAttendances()
       } catch (err) {
         const msg = err.response?.data?.error || err.message
         const alreadyCheckedIn = /already checked in|already exists/i.test(msg)
@@ -116,7 +140,7 @@ function ScanCheckInPage() {
         setCheckingIn(false)
       }
     },
-    [effectiveEvent, toast, fetchAttendances]
+    [effectiveEvent, toast, fetchAttendances, user?.token]
   )
 
   const handleNewUserAndCheckIn = useCallback(
@@ -124,34 +148,45 @@ function ScanCheckInPage() {
       if (!effectiveEvent) return
       setCheckingIn(true)
       try {
-        const regRes = await axios.post(`${API_URL}/api/register/`, {
-          first_name: data.first_name,
-          last_name: data.last_name,
-          a_number: data.a_number,
-        })
+        const regRes = await axios.post(
+          `${API_URL}/api/register/`,
+          {
+            first_name: data.first_name,
+            last_name: data.last_name,
+            a_number: data.a_number,
+          },
+          { headers: user?.token ? { Authorization: `Bearer ${user.token}` } : {} }
+        )
         const studentId = regRes.data.student_id
         if (studentId == null) {
           toast({ title: "Error", description: "Registration did not return a student ID.", variant: "destructive" })
           return
         }
-        await axios.post(`${API_URL}/api/attendance/`, {
-          student: studentId,
-          event: effectiveEvent.id,
-        })
+        if (user?.token) {
+          await axios.post(`${API_URL}/api/attendance/`, {
+            student: studentId,
+            event: effectiveEvent.id,
+          })
+          fetchStudents()
+          fetchAttendances()
+        } else {
+          await axios.post(`${API_URL}/api/public/scan/checkin/`, {
+            student: studentId,
+            event: effectiveEvent.id,
+          })
+        }
         toast({
           title: "Checked in",
           description: `${data.first_name} ${data.last_name} has been added and checked in.`,
           className: "bg-green-50 border-green-200 text-black",
         })
-        fetchStudents()
-        fetchAttendances()
       } catch (err) {
         toast({ title: "Error", description: err.response?.data?.error || err.message, variant: "destructive" })
       } finally {
         setCheckingIn(false)
       }
     },
-    [effectiveEvent, toast, fetchStudents, fetchAttendances]
+    [effectiveEvent, toast, fetchStudents, fetchAttendances, user?.token]
   )
 
   const handleUserCreated = useCallback(() => {
@@ -210,6 +245,10 @@ function ScanCheckInPage() {
             onNewUserAndCheckIn={handleNewUserAndCheckIn}
             scanMode
             checkingIn={checkingIn}
+            onLookupANumber={!user?.token ? async (aNumber) => {
+              const res = await axios.get(`${API_URL}/api/public/scan/student/`, { params: { a_number: aNumber } })
+              return res.data?.found && res.data?.student ? res.data.student : null
+            } : undefined}
           />
         </div>
       )}

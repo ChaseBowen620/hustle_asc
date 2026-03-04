@@ -24,13 +24,18 @@ function getANumber(student) {
 }
 
 const MIN_SEARCH_LENGTH = 2
-
+const A_NUMBER_REGEX = /^a\d{8}$/
 const SEARCH_DROPDOWN_MAX = 8
 
-function CheckInStudents({ students, onCheckIn, attendances, selectedEvent, onUserCreated, onNewUserAndCheckIn, onRemoveAttendance, onRemovePendingAttendance, scanMode, hideCheckedInList, hideStudentList, checkingIn }) {
+function normalizeANumber(value) {
+  return (value || "").trim().toLowerCase()
+}
+
+function CheckInStudents({ students, onCheckIn, attendances, selectedEvent, onUserCreated, onNewUserAndCheckIn, onRemoveAttendance, onRemovePendingAttendance, scanMode, hideCheckedInList, hideStudentList, checkingIn, onLookupANumber, hideCreateUser }) {
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedStudent, setSelectedStudent] = useState(null)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+  const [showInvalidANumberDialog, setShowInvalidANumberDialog] = useState(false)
   const [removingId, setRemovingId] = useState(null)
   const [removingTempId, setRemovingTempId] = useState(null)
   const [checkedInExpanded, setCheckedInExpanded] = useState(false)
@@ -41,8 +46,8 @@ function CheckInStudents({ students, onCheckIn, attendances, selectedEvent, onUs
   )
   const showAttendedList = !hideCheckedInList && !scanMode && attendedList.length > 0
   const searchLongEnough = (searchTerm || "").trim().length >= MIN_SEARCH_LENGTH
-  const showStudentList = !hideStudentList && (!scanMode || searchLongEnough)
-  const showSearchDropdown = hideStudentList && searchLongEnough && searchFocused
+  const showStudentList = !hideStudentList && !scanMode && searchLongEnough
+  const showSearchDropdown = hideStudentList && searchLongEnough && searchFocused && !scanMode
 
   const availableStudents = students.filter((student) => {
     return !attendances.some(
@@ -61,6 +66,34 @@ function CheckInStudents({ students, onCheckIn, attendances, selectedEvent, onUs
     onCheckIn(selectedStudent)
     setShowConfirmDialog(false)
     setSelectedStudent(null)
+  }
+
+  const handleScanANumberSubmit = async () => {
+    const raw = normalizeANumber(searchTerm)
+    if (!raw) return
+    if (!A_NUMBER_REGEX.test(raw)) {
+      setShowInvalidANumberDialog(true)
+      setSearchTerm("")
+      return
+    }
+    let student = null
+    if (onLookupANumber) {
+      try {
+        student = await onLookupANumber(raw)
+      } catch {
+        student = null
+      }
+    } else {
+      student = students.find((s) => (s.a_number || "").toLowerCase() === raw) ?? null
+    }
+    if (student) {
+      setSelectedStudent(student)
+      setShowConfirmDialog(true)
+      setSearchTerm("")
+    } else {
+      setShowInvalidANumberDialog(true)
+      setSearchTerm("")
+    }
   }
 
   const handleRemoveAttendance = async (attendanceId) => {
@@ -163,17 +196,27 @@ function CheckInStudents({ students, onCheckIn, attendances, selectedEvent, onUs
         </div>
       )}
 
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex items-center space-x-2 flex-1 min-w-0 relative max-w-sm">
-          <Search className="w-5 h-5 text-gray-500 shrink-0" />
+      <div className={scanMode ? "flex flex-col gap-3" : "flex items-center justify-between gap-2 flex-wrap"}>
+        <div className={`flex items-center space-x-2 min-w-0 relative ${scanMode ? "w-full" : "flex-1 max-w-sm"}`}>
+          {!scanMode && <Search className="w-5 h-5 text-gray-500 shrink-0" />}
           <Input
-            placeholder={scanMode ? "Search by name or A-number to check in..." : "Search students..."}
+            placeholder={scanMode ? "Insert A-number" : "Search students..."}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             onFocus={() => setSearchFocused(true)}
             onBlur={() => setTimeout(() => setSearchFocused(false), 150)}
+            onKeyDown={scanMode ? (e) => e.key === "Enter" && (e.preventDefault(), handleScanANumberSubmit()) : undefined}
             className="w-full"
           />
+          {scanMode && (
+            <Button
+              type="button"
+              onClick={handleScanANumberSubmit}
+              disabled={!searchTerm.trim()}
+            >
+              Check
+            </Button>
+          )}
           {showSearchDropdown && (
             <div className="absolute top-full left-0 right-0 z-10 mt-1 border rounded-lg bg-white shadow-lg max-h-64 overflow-y-auto">
               {dropdownStudents.length === 0 ? (
@@ -202,13 +245,15 @@ function CheckInStudents({ students, onCheckIn, attendances, selectedEvent, onUs
             </div>
           )}
         </div>
-        <CreateUserForm
-          onUserCreated={onUserCreated}
-          queueMode={!!onNewUserAndCheckIn}
-          onQueueSubmit={onNewUserAndCheckIn}
-          eventId={selectedEvent?.id}
-          eventDate={selectedEvent?.date}
-        />
+        {!hideCreateUser && (
+          <CreateUserForm
+            onUserCreated={onUserCreated}
+            queueMode={!!onNewUserAndCheckIn}
+            onQueueSubmit={onNewUserAndCheckIn}
+            eventId={selectedEvent?.id}
+            eventDate={selectedEvent?.date}
+          />
+        )}
       </div>
 
       {showStudentList ? (
@@ -253,7 +298,7 @@ function CheckInStudents({ students, onCheckIn, attendances, selectedEvent, onUs
       ) : (
         !hideStudentList && scanMode && (
           <p className="text-slate-500 text-sm py-4 text-center">
-            Search by name or A-number to check in, or create a new user.
+            Enter a full A-number (e.g. a01234567) and press Check or Enter.
           </p>
         )
       )}
@@ -283,6 +328,24 @@ function CheckInStudents({ students, onCheckIn, attendances, selectedEvent, onUs
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {scanMode && (
+        <Dialog open={showInvalidANumberDialog} onOpenChange={setShowInvalidANumberDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>A-number not recognized</DialogTitle>
+            </DialogHeader>
+            <p className="text-slate-600">
+              The A-number entered was invalid or is not in the system. Please try again or use a different A-number.
+            </p>
+            <DialogFooter className="flex justify-end">
+              <Button onClick={() => setShowInvalidANumberDialog(false)}>
+                Back
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   )
 }
