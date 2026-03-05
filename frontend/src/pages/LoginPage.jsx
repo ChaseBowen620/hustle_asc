@@ -78,7 +78,11 @@ function LoginPage() {
                 {error}
               </p>
             )}
-            <Button type="submit" className="w-full sr-only" disabled={loading} tabIndex={-1}>
+            <Button
+              type="submit"
+              className="w-full bg-slate-800 hover:bg-slate-700 text-white font-medium"
+              disabled={loading}
+            >
               {loading ? "Signing in…" : "Log in"}
             </Button>
           </form>

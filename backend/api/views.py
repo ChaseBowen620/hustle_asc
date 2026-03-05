@@ -33,7 +33,9 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from zoneinfo import ZoneInfo
 import os
 import re
+import logging
 
+logger = logging.getLogger(__name__)
 User = get_user_model()
 
 
@@ -68,27 +70,55 @@ def auth_login(request):
     Issue JWT tokens for dashboard login. Credentials are validated against
     DASHBOARD_USERNAME and DASHBOARD_PASSWORD (set same as frontend VITE_LOGIN_* in backend .env).
     """
-    username = (request.data.get('username') or '').strip()
-    password = request.data.get('password') or ''
-    env_user = (os.environ.get('DASHBOARD_USERNAME') or '').strip()
-    env_pass = os.environ.get('DASHBOARD_PASSWORD') or ''
-    if not username or not env_user or username != env_user or password != env_pass:
+    def _json_500(msg):
+        return Response({'error': msg}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    try:
+        # Safely get POST body (request.data can raise or be missing in some setups)
+        try:
+            data = getattr(request, 'data', None)
+            if data is None:
+                return _json_500('Invalid request.')
+            if not isinstance(data, dict):
+                data = dict(data) if hasattr(data, 'keys') else {}
+        except Exception as e:
+            logger.warning("auth_login request.data read failed: %s", e)
+            return _json_500('Invalid request body.')
+
+        username = (data.get('username') or '').strip()
+        password = data.get('password') or ''
+        env_user = (os.environ.get('DASHBOARD_USERNAME') or '').strip()
+        env_pass = os.environ.get('DASHBOARD_PASSWORD') or ''
+
+        if not username or not env_user or username != env_user or password != env_pass:
+            return Response(
+                {'error': 'Invalid username or password.'},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        user = User.objects.filter(username=env_user).first()
+        if user is None:
+            user = User(username=env_user, is_staff=False, is_active=True)
+            user.set_unusable_password()
+            user.save()
+        refresh = RefreshToken.for_user(user)
+        return Response({
+            'access': str(refresh.access_token),
+            'refresh': str(refresh),
+        })
+    except Exception as e:
+        logger.exception("auth_login failed")
+        try:
+            if getattr(settings, 'DEBUG', False):
+                return Response(
+                    {'error': f'Login failed: {e!s}'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+        except Exception:
+            pass
         return Response(
-            {'error': 'Invalid username or password.'},
-            status=status.HTTP_401_UNAUTHORIZED,
+            {'error': 'Internal server error. Check server logs.'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
-    user, created = User.objects.get_or_create(
-        username=env_user,
-        defaults={'is_staff': False, 'is_active': True},
-    )
-    if created:
-        user.set_unusable_password()
-        user.save()
-    refresh = RefreshToken.for_user(user)
-    return Response({
-        'access': str(refresh.access_token),
-        'refresh': str(refresh),
-    })
 
 
 # ----- Public scan endpoints (QR code check-in; no login required) -----

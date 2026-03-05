@@ -1,58 +1,23 @@
 #!/usr/bin/env bash
-# Restart backend and frontend: kill processes on their ports, then start both.
-# Backend: port 8000. Frontend: port 3000 (Vite).
-#
-# Why you "see" the app only when running this script:
-# This script is what starts the servers. Without it, nothing is listening on
-# 8000 or 3000. To run manually: in one terminal run "cd backend && python manage.py runserver 8000",
-# in another run "cd frontend && npm run dev", then open http://localhost:3000 (or 8000 for API).
+# Restart the backend (and optionally frontend) on the server.
+# Run this on the server after editing code so the services pick up changes.
+# From another machine: ssh ubuntu@hustledashboard.com 'cd /home/ubuntu/hustle_asc && ./restart.sh'
 
 set -e
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-BACKEND_PORT=8000
-FRONTEND_PORT=3000
 
-kill_port() {
-  local port=$1
-  local name=$2
-  if command -v lsof &>/dev/null; then
-    local pid
-    pid=$(lsof -ti ":$port" 2>/dev/null) || true
-    if [ -n "$pid" ]; then
-      echo "Killing $name (port $port, PID $pid)..."
-      kill -9 $pid 2>/dev/null || true
-      sleep 1
-    else
-      echo "No process on port $port ($name)."
-    fi
-  elif command -v fuser &>/dev/null; then
-    if fuser "$port/tcp" &>/dev/null; then
-      echo "Killing $name (port $port)..."
-      fuser -k "$port/tcp" 2>/dev/null || true
-      sleep 1
-    else
-      echo "No process on port $port ($name)."
-    fi
-  else
-    echo "Warning: neither lsof nor fuser found; skipping kill for port $port"
-  fi
-}
-
-echo "Stopping backend and frontend..."
-kill_port $BACKEND_PORT "backend"
-kill_port $FRONTEND_PORT "frontend"
+echo "Restarting backend (hustle-backend)..."
+sudo systemctl restart hustle-backend
+echo "Backend restarted."
 echo ""
 
-# Start backend in background (from project root, backend has manage.py)
-echo "Starting backend on port $BACKEND_PORT..."
-cd "$ROOT/backend"
-python manage.py runserver "$BACKEND_PORT" &
-BACKEND_PID=$!
-echo "Backend PID: $BACKEND_PID"
-cd "$ROOT"
-sleep 2
-
-# Start frontend in foreground so you see logs and Ctrl+C stops it
-echo "Starting frontend on port $FRONTEND_PORT..."
-cd "$ROOT/frontend"
-exec npm run dev
+# Restart frontend service if present (picks up existing build; run build-frontend.sh if you changed frontend)
+if systemctl list-unit-files --type=service 2>/dev/null | grep -q hustle-frontend; then
+  echo "Restarting frontend (hustle-frontend)..."
+  sudo systemctl restart hustle-frontend
+  echo "Frontend restarted."
+else
+  echo "No hustle-frontend service; skipping. Run ./build-frontend.sh after frontend changes."
+fi
+echo ""
+echo "Done. Backend is live at https://hustledashboard.com"

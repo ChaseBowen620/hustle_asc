@@ -17,6 +17,9 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from api.views import register_student, check_a_number, robots_txt, auth_login
+from backend.error_handlers import custom_500
+
+handler500 = custom_500
 
 urlpatterns = [
     path('robots.txt', robots_txt),

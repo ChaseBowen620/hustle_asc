@@ -12,6 +12,12 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 
 from pathlib import Path
 import os
+
+# Load .env from backend project root so DASHBOARD_USERNAME/PASSWORD etc. are available
+_env_file = Path(__file__).resolve().parent.parent / ".env"
+if _env_file.exists():
+    from dotenv import load_dotenv
+    load_dotenv(_env_file)
 from datetime import timedelta
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.

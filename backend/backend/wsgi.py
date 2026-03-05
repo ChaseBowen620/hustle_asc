@@ -8,6 +8,13 @@ https://docs.djangoproject.com/en/4.2/howto/deployment/wsgi/
 """
 
 import os
+from pathlib import Path
+
+# Load .env from backend project root so DASHBOARD_USERNAME/PASSWORD are set when running under gunicorn etc.
+_env_file = Path(__file__).resolve().parent.parent / ".env"
+if _env_file.exists():
+    from dotenv import load_dotenv
+    load_dotenv(_env_file)
 
 from django.core.wsgi import get_wsgi_application
 

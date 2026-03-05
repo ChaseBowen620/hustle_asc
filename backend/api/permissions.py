@@ -3,7 +3,8 @@ Permission that requires a valid CSRF token for unauthenticated POST/PUT/PATCH/D
 Used for public scan endpoints so requests must come from the frontend (cookie + X-CSRFToken).
 """
 from rest_framework.permissions import BasePermission
-from django.middleware.csrf import get_token, _compare_salted_tokens
+from django.middleware.csrf import get_token
+from django.utils.crypto import constant_time_compare
 
 
 class AllowAnyWithCSRFForUnsafe(BasePermission):
@@ -23,4 +24,4 @@ class AllowAnyWithCSRFForUnsafe(BasePermission):
         cookie_token = get_token(request) or request.COOKIES.get("csrftoken", "")
         if not token_header or not cookie_token:
             return False
-        return _compare_salted_tokens(token_header, cookie_token)
+        return constant_time_compare(token_header, cookie_token)

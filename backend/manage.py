@@ -2,6 +2,13 @@
 """Django's command-line utility for administrative tasks."""
 import os
 import sys
+from pathlib import Path
+
+# Load .env from the backend project root (parent of backend/ package) so DASHBOARD_USERNAME/PASSWORD etc. are set
+_env_file = Path(__file__).resolve().parent / ".env"
+if _env_file.exists():
+    from dotenv import load_dotenv
+    load_dotenv(_env_file)
 
 
 def main():
