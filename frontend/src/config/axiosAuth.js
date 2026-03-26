@@ -7,6 +7,17 @@ import axios from "axios"
 import { API_URL } from "@/config/api"
 import { useAuth } from "@/hooks/useAuth"
 
+// Cross-origin (e.g. localhost → production API): cookies (csrftoken) only sent if credentials are on.
+if (typeof window !== "undefined" && typeof API_URL === "string" && API_URL) {
+  try {
+    if (new URL(API_URL).origin !== window.location.origin) {
+      axios.defaults.withCredentials = true
+    }
+  } catch {
+    /* ignore invalid API_URL */
+  }
+}
+
 function getCsrfCookie() {
   if (typeof document === "undefined") return null
   const match = document.cookie.match(/\bcsrftoken=([^;]+)/)

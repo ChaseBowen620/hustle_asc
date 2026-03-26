@@ -12,6 +12,7 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/hooks/useAuth"
 import { API_URL } from '@/config/api'
+import axios from "axios"
 import { UserPlus } from "lucide-react"
 
 function CreateUserForm({ onUserCreated, queueMode, onQueueSubmit, eventId, eventDate }) {
@@ -137,46 +138,41 @@ function CreateUserForm({ onUserCreated, queueMode, onQueueSubmit, eventId, even
     setIsLoading(true)
     
     try {
-      const response = await fetch(`${API_URL}/api/register/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...authHeaders,
-        },
-        body: JSON.stringify(formData)
+      // Ensure csrftoken cookie exists (same pattern as ScanCheckInPage) before CSRF-protected POST.
+      await axios.get(`${API_URL}/api/public/scan/csrf/`, { withCredentials: true }).catch(() => {})
+      // Use axios so @/config/axiosAuth attaches X-CSRFToken; register_student requires CSRF for anonymous POST.
+      await axios.post(`${API_URL}/api/register/`, formData, {
+        headers: { ...authHeaders },
       })
 
-      const data = await response.json()
+      toast({
+        title: "Success",
+        description: `User account created successfully for ${formData.first_name} ${formData.last_name}`,
+      })
 
-      if (response.ok) {
-        toast({
-          title: "Success",
-          description: `User account created successfully for ${formData.first_name} ${formData.last_name}`,
-        })
-        
-        setFormData({
-          first_name: "",
-          last_name: "",
-          a_number: ""
-        })
-        
-        setIsOpen(false)
-        
-        if (onUserCreated) {
-          onUserCreated()
-        }
-      } else {
-        toast({
-          title: "Error",
-          description: data.error || "Failed to create user account",
-          variant: "destructive"
-        })
+      setFormData({
+        first_name: "",
+        last_name: "",
+        a_number: ""
+      })
+
+      setIsOpen(false)
+
+      if (onUserCreated) {
+        onUserCreated()
       }
     } catch (error) {
       console.error('Error creating user:', error)
+      const msg =
+        error.response?.data?.error ||
+        error.response?.data?.detail ||
+        (error.response?.status === 403
+          ? "Request blocked (CSRF). Reload the page and try again, or open the scan/check-in page once to refresh your session."
+          : null) ||
+        "Network error. Please try again."
       toast({
         title: "Error",
-        description: "Network error. Please try again.",
+        description: msg,
         variant: "destructive"
       })
     } finally {
