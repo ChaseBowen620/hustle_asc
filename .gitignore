@@ -34,6 +34,7 @@ log.txt
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
+backend/.event_cleanup_scheduler.lock
 media/
 
 # Node.js

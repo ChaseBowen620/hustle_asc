@@ -47,7 +47,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'corsheaders',
-    'api',
+    'api.apps.ApiConfig',
 ]
 
 MIDDLEWARE = [
@@ -122,6 +122,12 @@ TIME_ZONE = 'America/Denver'
 USE_I18N = True
 
 USE_TZ = False
+
+# Background APScheduler in api.apps: delete past events with zero attendances daily.
+# Set ENABLE_DAILY_EVENT_CLEANUP_SCHEDULER=false in tests or if you prefer cron only.
+ENABLE_DAILY_EVENT_CLEANUP_SCHEDULER = os.environ.get(
+    "ENABLE_DAILY_EVENT_CLEANUP_SCHEDULER", "true"
+).lower() in ("1", "true", "yes")
 
 
 # Static files (CSS, JavaScript, Images)
