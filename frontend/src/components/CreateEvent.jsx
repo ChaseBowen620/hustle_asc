@@ -189,7 +189,16 @@ function CreateEvent({ onCreateEvent, initialData }) {
         <label className="text-sm font-medium">Organization</label>
         <Select
           value={eventData.organization}
-          onValueChange={(value) => setEventData({ ...eventData, organization: value })}
+          onValueChange={(value) => {
+            setEventData({ ...eventData, organization: value })
+            setSelectedOrganizations((prev) =>
+              prev.filter((id) => {
+                const o = organizations.find((org) => (org.id || org) === id)
+                const n = o?.name || o
+                return n !== value
+              })
+            )
+          }}
           disabled={isClubLeader}
         >
           <SelectTrigger>
@@ -211,8 +220,11 @@ function CreateEvent({ onCreateEvent, initialData }) {
       </div>
 
       {/* Additional Organizations (Secondary) */}
-      <div className="space-y-2">
+      <div className={`space-y-2 ${!eventData.organization?.trim() ? 'opacity-60' : ''}`}>
         <label className="text-sm font-medium">Additional Organizations (for cross-club events)</label>
+        {!eventData.organization?.trim() && (
+          <p className="text-xs text-gray-500">Select a primary organization above to add secondary organizations.</p>
+        )}
         <div className="border rounded-md p-3 max-h-48 overflow-y-auto">
           {organizations.length === 0 ? (
             <p className="text-sm text-gray-500">Loading organizations...</p>
@@ -223,7 +235,11 @@ function CreateEvent({ onCreateEvent, initialData }) {
                 const orgName = org.name || org
                 const isPrimary = (orgName === eventData.organization)
                 const isSelected = selectedOrganizations.includes(orgId)
-                const isDisabled = isPrimary || (isClubLeader && orgName === user?.admin_profile?.role)
+                const secondaryLocked = !eventData.organization?.trim()
+                const isDisabled =
+                  secondaryLocked ||
+                  isPrimary ||
+                  (isClubLeader && orgName === user?.admin_profile?.role)
 
                 return (
                   <div key={`org-${index}`} className="flex items-center space-x-2">

@@ -706,7 +706,18 @@ function EventsListPage() {
               <Label htmlFor="primary-org">Primary organization</Label>
               <Select
                 value={editValues.organization || ""}
-                onValueChange={(v) => setEditValues({ ...editValues, organization: v })}
+                onValueChange={(v) =>
+                  setEditValues({
+                    ...editValues,
+                    organization: v,
+                    secondaryOrganizationIds: v
+                      ? (editValues.secondaryOrganizationIds || []).filter((id) => {
+                          const o = organizations.find((org) => org.id === id)
+                          return o?.name !== v
+                        })
+                      : [],
+                  })
+                }
                 disabled={isSaving}
               >
                 <SelectTrigger id="primary-org" className="w-full">
@@ -719,30 +730,44 @@ function EventsListPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid gap-2">
+            <div className={`grid gap-2 ${!editValues.organization?.trim() ? 'opacity-60' : ''}`}>
               <Label>Secondary organizations</Label>
+              {!editValues.organization?.trim() && (
+                <p className="text-xs text-muted-foreground">
+                  Select a primary organization first to add secondary organizations.
+                </p>
+              )}
               <div className="border rounded-md p-3 max-h-48 overflow-y-auto space-y-2">
-                {organizations
-                  .filter((o) => o.name !== editValues.organization)
-                  .map((org) => (
-                    <label key={org.id} className="flex items-center gap-2 cursor-pointer hover:bg-muted/50 rounded px-2 py-1 -mx-2 -my-1">
-                      <Checkbox
-                        checked={(editValues.secondaryOrganizationIds || []).includes(org.id)}
-                        onCheckedChange={(checked) => {
-                          const ids = editValues.secondaryOrganizationIds || []
-                          setEditValues({
-                            ...editValues,
-                            secondaryOrganizationIds: checked
-                              ? [...ids, org.id]
-                              : ids.filter((id) => id !== org.id)
-                          })
-                        }}
-                      />
-                      <span className="text-sm">{org.name}</span>
-                    </label>
-                  ))}
-                {organizations.filter((o) => o.name !== editValues.organization).length === 0 && (
-                  <p className="text-sm text-muted-foreground">No other organizations to select.</p>
+                {!editValues.organization?.trim() ? (
+                  <p className="text-sm text-muted-foreground py-1">Choose a primary organization above.</p>
+                ) : (
+                  <>
+                    {organizations
+                      .filter((o) => o.name !== editValues.organization)
+                      .map((org) => (
+                        <label
+                          key={org.id}
+                          className="flex items-center gap-2 cursor-pointer hover:bg-muted/50 rounded px-2 py-1 -mx-2 -my-1"
+                        >
+                          <Checkbox
+                            checked={(editValues.secondaryOrganizationIds || []).includes(org.id)}
+                            onCheckedChange={(checked) => {
+                              const ids = editValues.secondaryOrganizationIds || []
+                              setEditValues({
+                                ...editValues,
+                                secondaryOrganizationIds: checked
+                                  ? [...ids, org.id]
+                                  : ids.filter((id) => id !== org.id)
+                              })
+                            }}
+                          />
+                          <span className="text-sm">{org.name}</span>
+                        </label>
+                      ))}
+                    {organizations.filter((o) => o.name !== editValues.organization).length === 0 && (
+                      <p className="text-sm text-muted-foreground">No other organizations to select.</p>
+                    )}
+                  </>
                 )}
               </div>
             </div>
