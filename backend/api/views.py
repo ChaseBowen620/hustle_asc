@@ -357,6 +357,7 @@ def _recurrence_stop_may1(from_date):
 def get_or_create_next_occurrence(event):
     """
     If event is recurring, ensure the next occurrence exists (create it if not).
+    New occurrences inherit the same recurrence settings so the chain continues on later check-ins.
     Recurring series stop at the start of May (05/01) each academic year; no per-event end date or parent link.
     Returns the next occurrence event or None.
     """
@@ -376,8 +377,8 @@ def get_or_create_next_occurrence(event):
         name=event.name,
         organization=event.organization,
         date=next_date,
-        is_recurring=False,
-        recurrence_type='none',
+        is_recurring=True,
+        recurrence_type=event.recurrence_type,
     )
     for eo in EventOrganization.objects.filter(event=event):
         EventOrganization.objects.get_or_create(event=new_event, organization=eo.organization)
